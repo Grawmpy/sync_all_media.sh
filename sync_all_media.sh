@@ -40,6 +40,7 @@
 #set -x 
 #--------------------
 
+# uses yad instead of zenity if found
 if which yad &>/dev/null; 
 then yadzen=yad ;
 else yadzen=zenity ;
@@ -57,9 +58,9 @@ MEDIA_PATH="/media/${PRIME_SUDOER}"
 #    Increase the terminal window size.
 printf '\033[8;38;105t'
 
-#    List of directories to exclude from rsync .
+#    List of directories to exclude from rsync.
 unset EXCLUDED_DIR ;
-EXCLUDED_DIR="\".Trash-1000\"" ;
+EXCLUDED_DIR+="\".Trash-1000\"" ;
 EXCLUDED_DIR+=',' ;
 EXCLUDED_DIR+="\"System Volume Information\"" ;
 EXCLUDED_DIR+=',' ;
@@ -99,8 +100,7 @@ RSYNC_FLAGS=( \
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              START FUNCTION              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #
 #   Insert a tab at the beginning of every line piped through this command. Easier to force a program that aligns left all the time.
-#   Don't add any indexing to the return array. For some reason it will end with an error on a buffer overrun.
-TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do return "${PIPESTATUS}" ; done }
+TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS[@]}"; do return "${PIPESTATUS[status]}" ; done }
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
