@@ -63,11 +63,26 @@ EXCLUDED_DIR="\".Trash-1000\"" ;
 EXCLUDED_DIR+=',' ;
 EXCLUDED_DIR+="\"System Volume Information\"" ;
 EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR="\"lost+found\"" ;
+EXCLUDED_DIR+="\"lost+found\"" ;
 EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR="\"timeshift\"" ;
+EXCLUDED_DIR+="\"timeshift\"" ;
 EXCLUDED_DIR+=',' ;
 EXCLUDED_DIR+="\"\$RECYCLE.BIN\"" ;
+
+RSYNC_FLAGS=( \
+--partial \
+--human-readable \
+--prune-empty-dirs \
+--links \
+--archive \
+--no-i-r \
+--mkpath \
+--update \
+--info=name0 \
+--exclude="{${EXCLUDED_DIR[*]}}" \
+--log-file="${RSYNC_LOG}" \
+--no-motd \
+)
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ##<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<        END INITIAL GLOBAL VARIABLES        >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -77,9 +92,7 @@ EXCLUDED_DIR+="\"\$RECYCLE.BIN\"" ;
 #--------------------------------------------------------------------------------------------------------------------------------------------------
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<                                >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       START OF FUNCTION DEFINITIONS      >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<                                >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -95,7 +108,7 @@ TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do return "
 #--------------------------------------------------------------------------------------------------------------------------------------------------
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>                                          <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              START FUNCTION              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #
 #   Create a pause function that works similar to the windows version
 
@@ -219,11 +232,10 @@ UNDERLINE()(
 #   We still write this information to a variable to use to eliminate that partition from any of the rsync paths.
 
 FIND_WIN_PARTITION()(
-    #BD1EF50F-AB16-40CB-B4D7-7AE8CBD49D6F
     unset findWindowsDrive findWinRecovPartition findWindowsCompare ;
     local findWindowsDrive findWinRecovPartition findWindowsCompare ;
     findWinRecovPartition=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ;
-    #   Removes the first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
+    #   Moves right past first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
     findWindowsCompare="${findWinRecovPartition:5:3}" ;
     if eval sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | awk '{print $1}' ; then 
     #   Using the infomation from above leads us to the ntfs partition of the drive containing the Windows OS.
@@ -297,9 +309,7 @@ separate_string()(input=$1 ; for each in $( seq 0 $(( ${#input} - 1 )) ) ; do ec
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<                                >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<       END OF FUNCTION DEFINITIONS      >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<                                >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------
@@ -310,7 +320,7 @@ separate_string()(input=$1 ; for each in $( seq 0 $(( ${#input} - 1 )) ) ; do ec
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# START SINGLE ELEMENT VARIABLES ---------------------------------------------------------------
+# START SINGLE ELEMENT HOST VARIABLES 
 #   Check and run the function to get select the host drive.
 if VERIFY_FUNCTION GET_HOST ; then if ! DRIVE_NAME=$(GET_HOST) ; then echo "GET_HOST function failed to launch." ; pause ; exit 1 ; fi ; fi
 #   Filesystem information for selected host drive
@@ -327,8 +337,9 @@ declare THIS_DRIVE_PATHS ; [[ ${DRIVE_NAME} ]] && { if ! THIS_DRIVE_PATHS="$(df 
 #   THIS_DRIVE_PCENT=$(df |"${WIN_PARTITION}" grep '/dev/sd' | sort -k1 | grep "${DRIVE_NAME}" | grep -v 100% | grep -v writable | awk '{ print $5 }') ;
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-
-
+#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#   START COLLECTION OF WINDOWS DRIVES DATA
 #   With this command, if there is any Windows OS partition, it should find it and give the filesystem path
 if ! WIN_PARTITION=$(FIND_WIN_PARTITION) ; then echo "Error declaring or populating the variable WIN_PARTITION" ; else isWindowsPartition=$? ; readonly WIN_PARTITION ; fi
 
@@ -336,6 +347,9 @@ if [[ ${isWindowsPartition} ]] ; then while IFS='' read -r line1; do var2+=("$li
 
 #   If there is a windows drive found, mounted or not
 
+#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#   -------------------------------------------------------------- START ARRAY VALUES -------------------------------------------------------------
+#   START COLLECTION OF ARRAY DATA FOR ALL ATTACHED MEDIA DRIVES
 #   Load all the filesystems into the variable ALL_FILESYSTEMS then compare to see if the destination drive is large enough to handle a one to one backup.
 unset TEMP_AFS ALL_FILESYSTEMS ; declare -a TEMP_AFS ALL_FILESYSTEMS ; if [[ ${isWindowsPartition} ]] ; then 
     mapfile -t TEMP_AFS < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $1 }' ; ) ; else 
@@ -397,10 +411,13 @@ mapfile -t ALL_DRIVES_PATHNAMES < <(  for i in "${!ALL_DRIVES_PATHS[@]}" ; do ba
 declare -i COUNT_FILES;            
 COUNT_FILES="${#ALL_FILESYSTEMS[@]}"  ;
 
-
 #   Count all the entries for each column
-AFS_COUNT=${#ALL_FILESYSTEMS} #ADT_COUNT=${#ALL_DRIVE_TOTALS} ADI_COUNT=${#ALL_DRIVE_IUSED} ADA_COUNT=${#ALL_DRIVES_AVAIL} PCT_COUNT=${#ALL_DRIVE_PCENT} ADP_COUNT=${#ALL_DRIVES_PATHNAMES}
-
+AFS_COUNT=${#ALL_FILESYSTEMS} ;
+#ADT_COUNT=${#ALL_DRIVE_TOTALS} ;
+#ADI_COUNT=${#ALL_DRIVE_IUSED} ;
+#ADA_COUNT=${#ALL_DRIVES_AVAIL} ;
+#PCT_COUNT=${#ALL_DRIVE_PCENT} ;
+#ADP_COUNT=${#ALL_DRIVES_PATHNAMES} ;
 
 if eval VERIFY_FUNCTION UNDERLINE ; then 
 UNDER_FST=$(UNDERLINE "${AFS_COUNT}" ) ;
@@ -411,21 +428,19 @@ UNDER_ADP=$(UNDERLINE 13 ) ; # "${ADP_COUNT}" ) ;
 # UNDER_PCT=$(UNDERLINE "${PCT_COUNT}") ;
 fi
 
-#   Write the number sequence of all available drives separated by a comma
+#   Write the number sequence of all available drives separated by a comma for selection menu
 unset NUM_SEQUENCE ; for i in $(seq 1 ${COUNT_FILES}); do if [[ $i -ne ${COUNT_FILES} ]]; then NUM_SEQUENCE+=$(printf '%s' "$i, "); else NUM_SEQUENCE+=$(printf '%s' "$i") ;fi ; done
 
-#   Gather up all the available data to place on the menu
+#   Gather up all the available media drive data to place on the menu
 declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <( 
-    for foundUsableDrive in "${!ALL_FILESYSTEMS[@]}"; do
+    for eachUsableDrive in "${!ALL_FILESYSTEMS[@]}"; do
         printf "%-${#UNDER_ADP}s   %-${#UNDER_FST}s   %-${#UNDER_ADT}s   %-${#UNDER_ADI}s   %-${#UNDER_ADA}s\n" \
-        "${ALL_DRIVES_PATHNAMES[foundUsableDrive]}" "${ALL_FILESYSTEMS[foundUsableDrive]}" "${HR_ALL_DRIVE_TOTALS[foundUsableDrive]}" "${HR_ALL_DRIVE_IUSED[foundUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[foundUsableDrive]}" ; done )
+        "${ALL_DRIVES_PATHNAMES[eachUsableDrive]}" "${ALL_FILESYSTEMS[eachUsableDrive]}" "${HR_ALL_DRIVE_TOTALS[eachUsableDrive]}" "${HR_ALL_DRIVE_IUSED[eachUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[eachUsableDrive]}" ; done )
 
 #   DEFINE THE LOG FILE FOR RSYNC TO USE TO 
 ! [[ -d "/home/${PRIME_SUDOER}/rsync_logs" ]] && mkdir "/home/${PRIME_SUDOER}/rsync_logs" ;
 RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ;
 ! [[ -f "${RSYNC_LOG}" ]] && touch "${RSYNC_LOG}" ; 
-
-RSYNC_FLAGS=( --partial --human-readable --prune-empty-dirs --links --archive --no-i-r --mkpath --update --info=name0 --exclude="{${EXCLUDED_DIR[*]}}" --log-file="${RSYNC_LOG}" --no-motd )
 
 #   Put everything together and run the program
 while true ; do
