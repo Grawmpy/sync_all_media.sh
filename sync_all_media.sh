@@ -70,6 +70,17 @@ EXCLUDED_DIR+="\"timeshift\"" ;
 EXCLUDED_DIR+=',' ;
 EXCLUDED_DIR+="\"\$RECYCLE.BIN\"" ;
 
+unset EXCLUDED_FILES ;
+EXCLUDED_FILES="" ;
+
+unset EXCLUDES ;
+if [[ -n "${EXCLUDED_DIR[@]}" ]] ; 
+    then EXCLUDES+="${EXCLUDED_DIR[@]}" ; 
+        if [[ -n "${EXCLUDED_FILES[@]}" ]] ; 
+        then  EXCLUDES+="${EXCLUDED_FILES[@]}" ; 
+        fi ; 
+fi ;
+
 RSYNC_FLAGS=( \
 --partial \
 --human-readable \
@@ -80,7 +91,7 @@ RSYNC_FLAGS=( \
 --mkpath \
 --update \
 --info=name0 \
---exclude="{${EXCLUDED_DIR[*]}}" \
+--exclude="{${EXCLUDES[*]}}" \
 --log-file="${RSYNC_LOG}" \
 --no-motd \
 )
@@ -280,15 +291,15 @@ spinner ; echo -e '\r' ; tput el & echo "$!" | tee "curs_dance_pid"  ;
 #
 
 FINIS_CURS_DANCE() { 
-    #    Stop the spinner animation when running spinner.sh
-    if ! sudo kill -9 "$(cat curs_dance_pid)" &>/dev/null ; then echo -e "kill spinner failed. Error: $?" ; fi ;
-    echo ;
+#    Stop the spinner animation when running spinner.sh
+if ! sudo kill -9 "$(cat curs_dance_pid)" &>/dev/null ; then echo -e "kill spinner failed. Error: $?" ; fi ;
+echo ;
 #    Remove the file created when running spinner.sh to keep track of program ID for terminating the action
-    if ! sudo rm curs_dance_pid ; then echo "rm spinner failed. Error: $?" ; fi ;
-    echo -e '\r\nFinished...' ;
+if ! sudo rm curs_dance_pid ; then echo "rm spinner failed. Error: $?" ; fi ;
+echo -e '\r\nFinished...' ;
 #    Put back the cursor
-    sudo tput cnorm ;
-    tput rc ;
+sudo tput cnorm ;
+tput rc ;
 }
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -299,7 +310,7 @@ FINIS_CURS_DANCE() {
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              START FUNCTION              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #
-
+#   <FOR FUTURE USE ; NOT IMPLEMENTED AT THIS TIME>
 #   Separate each character in a string and output each individually. 
 #   Sufficient to populate an array in use of collecting arguements passed to a command or function
 
@@ -324,15 +335,40 @@ separate_string()(input=$1 ; for each in $( seq 0 $(( ${#input} - 1 )) ) ; do ec
 #   Check and run the function to get select the host drive.
 if VERIFY_FUNCTION GET_HOST ; then if ! DRIVE_NAME=$(GET_HOST) ; then echo "GET_HOST function failed to launch." ; pause ; exit 1 ; fi ; fi
 #   Filesystem information for selected host drive
-declare THIS_FILESYSTEMS ; [[ ${DRIVE_NAME} ]] && { if ! THIS_FILESYSTEMS=$(df | grep "${DRIVE_NAME}" | awk '{ print $1 }') ; then echo "Either the gathering of filesystem information or population of THIS_FILESYSTEMS failed." ; else readonly THIS_FILESYSTEMS ; fi } ;
+declare THIS_FILESYSTEMS ; [[ ${DRIVE_NAME} ]] && { if ! THIS_FILESYSTEMS=$(df | grep "${DRIVE_NAME}" | awk '{ print $1 }') ; 
+then echo "Either the gathering of filesystem information or population of THIS_FILESYSTEMS failed." ; else readonly THIS_FILESYSTEMS ; fi } ;
 #   Total storage space on the host drive
-declare THIS_DRIVE_TOTAL READABLE_TOTAL ; [[ ${DRIVE_NAME} ]] && { if ! { if THIS_DRIVE_TOTAL=$(df | grep "${DRIVE_NAME}" | awk '{ print $2 }' | sed "s/[^0-9]*//g" ) ; then READABLE_TOTAL="$( echo $(( THIS_DRIVE_TOTAL * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; fi } ; then echo "Error declaring or populating the variables THIS_DRIVE_TOTAL or READABLE_TOTAL" ; else readonly READABLE_TOTAL THIS_DRIVE_TOTAL ; fi } ;
+declare THIS_DRIVE_TOTAL READABLE_TOTAL ; [[ ${DRIVE_NAME} ]] && { 
+if ! { 
+    if THIS_DRIVE_TOTAL=$(df | grep "${DRIVE_NAME}" | awk '{ print $2 }' | sed "s/[^0-9]*//g" ) ; 
+        then READABLE_TOTAL="$( echo $(( THIS_DRIVE_TOTAL * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
+    fi } ; 
+then echo "Error declaring or populating the variables THIS_DRIVE_TOTAL or READABLE_TOTAL" ; else readonly READABLE_TOTAL THIS_DRIVE_TOTAL ; 
+fi } ;
 #   Total drive spaced used
-declare THIS_DRIVE_IUSED ; [[ ${DRIVE_NAME} ]] && { if ! { if THIS_DRIVE_IUSED=$(df | grep "${DRIVE_NAME}" | awk '{ print $3 }' | sed "s/[^0-9]*//g" ) ; then READABLE_IUSED="$( echo $(( THIS_DRIVE_IUSED * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; fi ; } ; then echo "Error declaring or populating the variables THIS_DRIVE_IUSED or READABLE_IUSED" ; else readonly THIS_DRIVE_IUSED READABLE_IUSED ; fi } ;
+declare THIS_DRIVE_IUSED ; [[ ${DRIVE_NAME} ]] && { 
+if ! { 
+    if THIS_DRIVE_IUSED=$(df | grep "${DRIVE_NAME}" | awk '{ print $3 }' | sed "s/[^0-9]*//g" ) ; 
+        then READABLE_IUSED="$( echo $(( THIS_DRIVE_IUSED * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
+    fi ; } ; 
+then echo "Error declaring or populating the variables THIS_DRIVE_IUSED or READABLE_IUSED" ;
+else readonly THIS_DRIVE_IUSED READABLE_IUSED ; 
+fi } ;
 #   Total drive space used
-declare THIS_DRIVE_AVAIL READABLE_IUSED ; [[ ${DRIVE_NAME} ]] && { if ! { if THIS_DRIVE_AVAIL=$(df | grep "${DRIVE_NAME}" | awk '{ print $4 }' | sed "s/[^0-9]*//g" ) ; then READABLE_AVAIL="$( echo $(( THIS_DRIVE_AVAIL * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; fi ; } ; then echo "Error declaring or populating the variables THIS_DRIVE_AVAIL or READABLE_AVAIL" ; else readonly THIS_DRIVE_AVAIL READABLE_AVAIL ; fi } ;
+declare THIS_DRIVE_AVAIL READABLE_IUSED ; [[ ${DRIVE_NAME} ]] && { 
+if ! { 
+    if THIS_DRIVE_AVAIL=$(df | grep "${DRIVE_NAME}" | awk '{ print $4 }' | sed "s/[^0-9]*//g" ) ; 
+        then READABLE_AVAIL="$( echo $(( THIS_DRIVE_AVAIL * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
+    fi ; } ; 
+then echo "Error declaring or populating the variables THIS_DRIVE_AVAIL or READABLE_AVAIL" ; 
+else readonly THIS_DRIVE_AVAIL READABLE_AVAIL ; 
+fi } ;
 #   Pathway to the selected host drive
-declare THIS_DRIVE_PATHS ; [[ ${DRIVE_NAME} ]] && { if ! THIS_DRIVE_PATHS="$(df | grep "${DRIVE_NAME}" | awk '{ print $6 }')" ; then echo "Error declaring or populating the variables THIS_DRIVE_PATHS"else readonly THIS_DRIVE_PATHS ; fi } ;
+declare THIS_DRIVE_PATHS ; [[ ${DRIVE_NAME} ]] && { 
+    if ! THIS_DRIVE_PATHS="$(df | grep "${DRIVE_NAME}" | awk '{ print $6 }')" ; 
+        then echo "Error declaring or populating the variables THIS_DRIVE_PATHS" ; 
+        else readonly THIS_DRIVE_PATHS ; 
+    fi } ;
 #   declare THIS_DRIVE_PCENT=
 #   THIS_DRIVE_PCENT=$(df |"${WIN_PARTITION}" grep '/dev/sd' | sort -k1 | grep "${DRIVE_NAME}" | grep -v 100% | grep -v writable | awk '{ print $5 }') ;
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -341,9 +377,13 @@ declare THIS_DRIVE_PATHS ; [[ ${DRIVE_NAME} ]] && { if ! THIS_DRIVE_PATHS="$(df 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #   START COLLECTION OF WINDOWS DRIVES DATA
 #   With this command, if there is any Windows OS partition, it should find it and give the filesystem path
-if ! WIN_PARTITION=$(FIND_WIN_PARTITION) ; then echo "Error declaring or populating the variable WIN_PARTITION" ; else isWindowsPartition=$? ; readonly WIN_PARTITION ; fi
+if ! WIN_PARTITION=$(FIND_WIN_PARTITION) ; 
+    then echo "Error declaring or populating the variable WIN_PARTITION" ; 
+    else isWindowsPartition=$? ; readonly WIN_PARTITION ; 
+fi
 
-if [[ ${isWindowsPartition} ]] ; then while IFS='' read -r line1; do var2+=("$line1"); done < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' ) ; else while IFS='' read -r line1; do var2+=("$line1"); done < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' ) ; fi
+if [[ ${isWindowsPartition} ]] ; then 
+    while IFS='' read -r line1; do var2+=("$line1"); done < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' ) ; else while IFS='' read -r line1; do var2+=("$line1"); done < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' ) ; fi
 
 #   If there is a windows drive found, mounted or not
 
