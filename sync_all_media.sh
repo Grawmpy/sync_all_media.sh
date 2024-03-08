@@ -95,7 +95,7 @@ RSYNC_FLAGS=( \
 --mkpath \
 --update \
 --info=name0 \
---exclude="{${EXCLUDES[*]}}" \
+--exclude="{${ALL_EXCLUDES[*]}}" \
 --log-file="${RSYNC_LOG}" \
 --no-motd \
 )
