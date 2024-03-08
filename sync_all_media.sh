@@ -58,28 +58,32 @@ MEDIA_PATH="/media/${PRIME_SUDOER}"
 #    Increase the terminal window size.
 printf '\033[8;38;105t'
 
-#    List of directories to exclude from rsync.
-unset EXCLUDED_DIR ;
-EXCLUDED_DIR+="\".Trash-1000\"" ;
-EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR+="\"System Volume Information\"" ;
-EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR+="\"lost+found\"" ;
-EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR+="\"timeshift\"" ;
-EXCLUDED_DIR+=',' ;
-EXCLUDED_DIR+="\"\$RECYCLE.BIN\"" ;
+#   List of files and directories to exclude from rsync. 
+#   If you want a specific file or directory instead of a general blacklist use full path
+#   FILE AND DIRECTORY BLACKLIST FOR RSYNC
+unset EXCLUDES ; declare -a EXCLUDES ;
+#   Linux specific directories to avoid
+#   Example: EXCLUDES=('/complete/path/to/filename.file'); EXCLUDES+=('<dir_name>'); EXCLUDES+=('<file_name>') 
+EXCLUDES+=('.Trash-1000') ;
+EXCLUDES+=('lost+found') ;
+EXCLUDES+=('timeshift') ;
 
-unset EXCLUDED_FILES ;
-EXCLUDED_FILES="" ;
+#   For dual boot, avoid any Windows specific directories added to peripherals.
+EXCLUDES+=('System Volume Information') ;
+EXCLUDES+=('$RECYCLE.BIN') ;
 
-unset EXCLUDES ;
-if [[ -n "${EXCLUDED_DIR[@]}" ]] ; 
-    then EXCLUDES+="${EXCLUDED_DIR[@]}" ; 
-        if [[ -n "${EXCLUDED_FILES[@]}" ]] ; 
-        then  EXCLUDES+="${EXCLUDED_FILES[@]}" ; 
-        fi ; 
-fi ;
+#   Specific files to avoid
+### NONE LISTED
+
+#   Put the excludes into the right format to be accepted by rsync = "{ "directory1" , "directory2" , "directory3" , "file1" , "file2" }"
+ALL_EXCLUDES=$( printf '%s' "{ " ; 
+for each in "${!EXCLUDES[@]}"; do 
+    if [[ ${EXCLUDES[each]} != "${EXCLUDES[-1]}" ]] ; 
+        then printf '%s' "\"${EXCLUDES[each]}\" , " ; 
+        else printf '%s' "\"${EXCLUDES[each]}\"" ; 
+    fi ; 
+done ; 
+printf '%s\n' " }" ; ) ;
 
 RSYNC_FLAGS=( \
 --partial \
