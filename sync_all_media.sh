@@ -605,7 +605,7 @@ while true ; do
                 unset SINGLE_DIR_HOST ;
                 SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null;
                 for i in $(seq 1 "${COUNT_FILES}"); do 
-                zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}/LinuxFiles" ; 
+                zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}/" ; 
                 echo -ne "\033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}/\007" ;
                 START_CURS_DANCE "${THIS_DRIVE_PATHS}" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}";
                 _(){ eval "$*" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS[@]}"; do return "${PIPESTATUS[status]}" ; done }
