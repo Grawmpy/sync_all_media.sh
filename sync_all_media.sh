@@ -58,7 +58,10 @@ MEDIA_PATH="/media/${PRIME_SUDOER}"
 #    Increase the terminal window size.
 printf '\033[8;38;105t'
 
-RSYNC_FLAGS=( --partial --human-readable --prune-empty-dirs --links --archive --no-i-r --mkpath --update --info=name0 --exclude="{${ALL_EXCLUDES[*]}}" --log-file="${RSYNC_LOG}" --no-motd )
+#   DEFINE THE LOG FILE FOR RSYNC TO USE TO 
+! [[ -d "/home/${PRIME_SUDOER}/rsync_logs" ]] && mkdir "/home/${PRIME_SUDOER}/rsync_logs" ;
+RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ;
+! [[ -f "${RSYNC_LOG}" ]] && touch "${RSYNC_LOG}" ; 
 
 #   Exclude list is below
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -66,42 +69,58 @@ RSYNC_FLAGS=( --partial --human-readable --prune-empty-dirs --links --archive --
 #
 #   List of files and directories to exclude from rsync. 
 #   If you want a specific file or directory instead of a general blacklist use full path not including "/media/<drivename>/"
-#   Enter any exclusions below in the form of "EXCLUDES+=('<file or directory name>') ; "
+#   Enter any exclusions below in the form of "excludes+=('<file or directory name>') ; "
 #   The reason I am doing this here is that I need to have the host drive chosen before I can check to see if the excluded files exist.
 #   Making the checking and adding the files or directories more accurate than just assigning all exclusion variables risking file not found errors.
-FIND_EXCLUDES(){ unset EXCLUDES ALL_EXCLUDES; local EXCLUDES ; declare -ax ALL_EXCLUDES ;
+FIND_EXCLUDES(){ unset excludes host ALL_EXCLUDES ; 
+#   Input the path of the host media drive.
+
+declare -ax ALL_EXCLUDES ;
+local excludes host;
+host="${DRIVE_NAME}" ;
     #   Linux specific directories to avoid
-    EXCLUDES+=('.Trash-1000') ;
-    EXCLUDES+=('lost+found') ;
-    EXCLUDES+=('timeshift') ;
+    excludes+=( "${host}"/'.Trash-1000' ) ;
+    excludes+=( "${host}"/'lost+found' ) ;
+    excludes+=( "${host}"/'timeshift' ) ;
 #   Add additional files or directories in the following format
-    #EXCLUDES+=('<filename>') ;
+    #excludes+=('<filename>') ;
 
     #   For dual boot Windows systems
-    EXCLUDES+=('System Volume Information') ;
-    EXCLUDES+=('$RECYCLE.BIN') ;
+    # shellcheck disable=SC2016
+    excludes+=( "${host}"/'System Volume Information' ) ;
+    # shellcheck disable=SC2016
+    excludes+=( "${host}"/'$RECYCLE.BIN' ) ;
 
     #   Specific files to avoid
     ### NONE LISTED
 
     #   Put the excludes into the right format to be accepted by rsync = "-f'-directory1' -f'-directory2' -f'-directory3' -f'-file1' -f'-file2'"
     mapfile -t ALL_EXCLUDES < <( 
-    for each in "${!EXCLUDES[@]}"; do 
-        if [[ -f "${EXCLUDES[each]}" ]] || [[ -d "${EXCLUDES[each]}" ]] ; then
-            if [[ "${EXCLUDES[each]}" != "${EXCLUDES[-1]}" ]] ; 
-                then printf '%s' "-f'- ${EXCLUDES[each]}' "  ;  
-                else printf '%s' "-f'- ${EXCLUDES[each]}'" ; 
+    if [[ "${excludes[1]}" == '' ]] ; then printf '%s' "--exclude=""${excludes[0]}""" ; 
+    elif [[ "${excludes[0]}" == '' ]] ; then printf '%s' "" ; 
+    fi
+    printf '%s' "{ "
+    for each in "${!excludes[@]}"; do 
+        if [[ -f "${excludes[each]}" ]] || [[ -d "${excludes[each]}" ]] ; then
+            if [[ "${excludes[each]}" != "${excludes[-1]}" ]] ; 
+                then printf '%s' "\"${excludes[each]}\" , "  ;  
+                else printf '%s' "\"${excludes[each]}\" " ; 
             fi ; 
         fi ;
-    done ; )
-    export ALL_EXCLUDES ;
+    done ;     
+    echo "}" ;
+)
+    echo "${ALL_EXCLUDES[@]}"
  } ;
+
+
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------
-
+    
+#RSYNC_FLAGS=( --partial --human-readable --prune-empty-dirs --links --archive --mkpath --info=name0 --exclude="{${ALL_EXCLUDES[*]}}" --log-file="${RSYNC_LOG}" --no-motd )
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ##<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<        END INITIAL GLOBAL VARIABLES        >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -119,7 +138,7 @@ FIND_EXCLUDES(){ unset EXCLUDES ALL_EXCLUDES; local EXCLUDES ; declare -ax ALL_E
 #
 #   Insert a tab at the beginning of every line piped through this command. Multiple calls enter multiple tabs.
 #   Force a tab before stdout of a program like rsync that aligns all output to the left edge all the time.
-TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS[@]}"; do return "${PIPESTATUS[status]}" ; done }
+TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do IFS='[;' return "${PIPESTATUS}" ; done }
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -158,7 +177,7 @@ VERIFY_FUNCTION(){ [[ "$(LC_ALL=C type -t "$1")" && "$(LC_ALL=C type -t "$1")" =
 #   Both will give an error of a blank variable. 
 #   While the variable is not set, repeat the request until it's filled, if not, exit.
 
-function GET_HOST { 
+GET_HOST() { 
 unset DRIVE_MOUNT_PATH EXIT_CODE HOST_NAME DRIVE_NAME ;
 export DRIVE_NAME ;
 while  [[ -z ${HOST_NAME+x} ]] ; do
@@ -187,7 +206,7 @@ while  [[ -z ${HOST_NAME+x} ]] ; do
 #
 #   Define the errorcodes produced by rsync
 
-function TRANSLATE_ERRORCODE(){
+TRANSLATE_ERRORCODE(){
 X_CODE=$1;
     case ${X_CODE} in
         0 )    CODE="Success";;
@@ -280,56 +299,39 @@ fi
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              START FUNCTION              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 #
-START_CURS_DANCE(){
-#   Get cursor column and row coordinates
-tput init
+START_CURS_DANCE() {
 IFS='[;' read -rsd R -p $'\e[6n' _ ROW COLUMN
-sudo tput civis
-echo -e "\tStarting rsync's synchronization process. "; 
-echo -e "\tSyncing ${1} to ${2} "; 
-check=( \
-"Please wait #                                                " \
-"Please wait  #                                               " \
-"Please wait   #                                              " \
-"Please wait    #                                             " \
-"Please wait     #                                            " \
-"Please wait      #                                           " \
-"Please wait       #                                          " \
-"Please wait        #                                         " \
-"Please wait         #                                        " \
-"Please wait          #                                       " \
-"Please wait           #                                      " \
-"Please wait ##### " \
-"Please wait ####  " \
-"Please wait ###   " \
-"Please wait ##    " )
-
-spinner() ( while true; do tput cup "$((ROW+1))" "${COLUMN}" ; printf '\t%s\r' "Please wait      " ; for i in "${!check[@]}"; do tput cup "$((ROW+1))" "${COLUMN}" ; printf '\t%s\r' "${check[i]}" ; sleep 1 ; done ; done );
-tput sc
-#function spinner { local n i ; i=0 ; line='—\|/' ; n=${#line} ; while sleep 0.2; do tput cup "${ROW}" "${COLUMN}" ; printf "  %s\b" "${line:i++%n:1}" ; printf '\r' ; done ; }
-spinner ; echo -e '\r' ; tput el & echo "$!" | tee "curs_dance_pid"  ;
+tput init ;
+tput sc ;
+tput civis ;
+echo -e "\tStarting rsync's synchronization process. " ; 
+echo -e  "\tThis process may take several minutes to complete. Please wait..." ;
+spinner() { local n i ; i=0 ; line='—\|/' ; n=${#line} ; while sleep 0.2; do tput cup "${ROW}" "${COLUMN}" ; printf "  %s\b" "${line:i++%n:1}" ; printf '\r' ; done ; }
+spinner & echo "$!" | tee "curs_dance_pid" &>/dev/null ;
 }
 
-#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+### ---------------------------------------------------------------- END FUNCTION -----------------------------------------------------------------
+###################################################################################################################################################
 
-#--------------------------------------------------------------------------------------------------------------------------------------------------
 
-#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<              START FUNCTION              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#
+###################################################################################################################################################
+### --------------------------------------------------------------- START FUNCTION ----------------------------------------------------------------
 
 FINIS_CURS_DANCE() { 
-#    Stop the spinner animation when running spinner.sh
-if ! sudo kill -9 "$(cat curs_dance_pid)" &>/dev/null ; then echo -e "kill spinner failed. Error: $?" ; fi ;
-echo ;
+    #    Stop the spinner animation when running spinner.sh
+    sudo kill -9 "$(cat < curs_dance_pid)" &>/dev/null; ERROR_CODE=$?
+        if [[ ${ERROR_CODE} -ne 0 ]]; then echo "kill spinner failed. Error: ${ERROR_CODE}" ; fi
+    unset ERROR_CODE;
+    echo -ne "\n\r"
 #    Remove the file created when running spinner.sh to keep track of program ID for terminating the action
-if ! sudo rm curs_dance_pid ; then echo "rm spinner failed. Error: $?" ; fi ;
-echo -e '\r\nFinished...' ;
+    sudo rm curs_dance_pid; ERROR_CODE=$?
+        if [[ ${ERROR_CODE} -ne 0 ]]; then echo "rm spinner failed. Error: ${ERROR_CODE}" ; fi
+    unset ERROR_CODE;
+
+    echo -e '\r\nFinished...'
 #    Put back the cursor
-sudo tput cnorm ;
-tput rc ;
-tput el ;
+    sudo tput cnorm;
+    tput rc
 }
 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>               END FUNCTION               <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -493,7 +495,7 @@ UNDER_FST=$(UNDERLINE "${AFS_COUNT}" ) ;
 UNDER_ADT=$(UNDERLINE 6  ) ; # "${ADT_COUNT}" ) ; 
 UNDER_ADI=$(UNDERLINE 6  ) ; # "${ADI_COUNT}" ) ; 
 UNDER_ADA=$(UNDERLINE 6  ) ; # "${ADA_COUNT}" ) ; 
-UNDER_ADP=$(UNDERLINE 13 ) ; # "${ADP_COUNT}" ) ; 
+UNDER_ADP=$(UNDERLINE 15 ) ; # "${ADP_COUNT}" ) ; 
 # UNDER_PCT=$(UNDERLINE "${PCT_COUNT}") ;
 fi
 
@@ -503,13 +505,8 @@ unset NUM_SEQUENCE ; for i in $(seq 1 ${COUNT_FILES}); do if [[ $i -ne ${COUNT_F
 #   Gather up all the available media drive data to place on the menu
 declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <( 
     for eachUsableDrive in "${!ALL_FILESYSTEMS[@]}"; do
-        printf "%-${#UNDER_ADP}s   %-${#UNDER_FST}s   %-${#UNDER_ADT}s   %-${#UNDER_ADI}s   %-${#UNDER_ADA}s\n" \
+        printf "%-${#UNDER_ADP}s\t%-${#UNDER_FST}s\t%-${#UNDER_ADT}s\t%-${#UNDER_ADI}s\t%-${#UNDER_ADA}s\n" \
         "${ALL_DRIVES_PATHNAMES[eachUsableDrive]}" "${ALL_FILESYSTEMS[eachUsableDrive]}" "${HR_ALL_DRIVE_TOTALS[eachUsableDrive]}" "${HR_ALL_DRIVE_IUSED[eachUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[eachUsableDrive]}" ; done )
-
-#   DEFINE THE LOG FILE FOR RSYNC TO USE TO 
-! [[ -d "/home/${PRIME_SUDOER}/rsync_logs" ]] && mkdir "/home/${PRIME_SUDOER}/rsync_logs" ;
-RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ;
-! [[ -f "${RSYNC_LOG}" ]] && touch "${RSYNC_LOG}" ; 
 
 #   Put everything together and run the program
 while true ; do
@@ -518,108 +515,110 @@ while true ; do
     clear;
 
     #   LIST THE CURRENT DRIVE WORKING FROM
-    echo -e "\t\n\n\r"
-    echo -e "\\tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
+    echo -e "\n\n\r"
+    echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
 
     #   Print the heading with titles and underline each column heading
-    printf "\t   \e[2;4;22m%-${#UNDER_ADP}s\e[0m   \e[4;22m%-${#UNDER_FST}s\e[0m   \e[4;22m%-${#UNDER_ADT}s\e[0m   \e[4;22m%-${#UNDER_ADI}s\e[0m   \e[4;22m%-${#UNDER_ADA}s\e[0m\n" "Drive name" "Location" "Total " "Used " "Available " ;
+    printf "\t\e[2;4;22m%-${#UNDER_ADP}s\e[0m\t\e[4;22m%-${#UNDER_FST}s\e[0m\t\e[4;22m%-${#UNDER_ADT}s\e[0m\t\e[4;22m%-${#UNDER_ADI}s\e[0m\t\e[4;22m%-${#UNDER_ADA}s\e[0m\n" "Drive name" "Location" "Total " "Used " "Available " ;
 
     for i in $(seq 1 "${#AVAIL_DRIVES[@]}"); do     
-        printf '\t\e[1;97m%s\e[0m) ' "$i" ; printf '%s\n' "${AVAIL_DRIVES[$((i-1))]}"; done
+        printf '\t\e[1;97m%s\e[0m) ' "$i" ; printf ' %s\n' "${AVAIL_DRIVES[$((i-1))]}"; done
 
-    echo -en '\n\a' ;
+    echo -en '\n\n\a' ;
     echo -en "\t\e[1;97mA\e[0m)  Backup to \e[1;97m\e[4;37mA\e[0mll drives above.\r\n" ;
-    echo -en "\t\e[1;97mS\e[0m)  Select directory to back up to a \e[1;97m\e[4;37mS\e[0mingle drive\r\n" ;
+    echo -en "\t\e[1;97mS\e[0m)  Select Directory to back up to a \e[1;97m\e[4;37mS\e[0mingle drive\r\n" ;
     echo -en "\t\e[1;97mD\e[0m)  Select \e[1;97m\e[4;37mD\e[0mirectory to back up to all drives.\r\n"
-    echo -en "\t\e[1;97mF\e[0m)  Select Directory or \e[1;97m\e[4;37mF\e[0mile to back up to any other directory.\r\n\n"
+    echo -en "\t\e[1;97mF\e[0m)  Select Directory or \e[1;97m\e[4;37mF\e[0mile to back up into any other Directory.\r\n\n"
     echo -en "\t\e[1;97mQ\e[0m)  \e[1;97m\e[4;37mQ\e[0muit script\r\n\n"
-    echo -en "\tIf you would like to select more than one drive, \n"
-    echo -en "\t    enter the number of the drive from the list above, separated by spaces.\n\r\n"
+
+    echo -en "\tIf you would like to select more than one drive, enter the number \n"
+    echo -en "\t  from the list above, separated by spaces, in any sequence. \n"
+    echo -en "\t  'A' will cause all numbers entered to be ignored. \n"
+    echo -en "\t  The script will run all synchronization in the sequence you've provide.\n\r\n"
     echo -en "\tSelect: ${NUM_SEQUENCE}, A, S, L, or F: " ;
 
     IFS= read -r OPT &>/dev/null 2>&1 ; IFS=' ' read -r -a OPT_ARRAY <<< "$OPT"
-
     #   Look in the array and see if the user entered an A in the listing, this entry overrides any individual drive selection. 
-    if echo "${OPT_ARRAY[@]}" | grep 'A' ; then 
-        echo -en "The 'A' option was detected in the selection. Switching to syncing " ; 
-        printf '\e[1;97m\e[4;37mA\e[0m';echo "ll drives." ; 
-        OPT_ARRAY=("A") ;
-    fi ;
+    if [[ -n "${opt1}" ]] || [[ -n "${opt2}" ]] ; 
+        then echo -en "The 'A' option was detected in the selection. Switching to sycing " ; printf '\e[1;97m\e[4;37mA\e[0m';echo "ll drives." ; OPT_ARRAY=("A") ; 
+    fi
 
     for eachDrive in "${!OPT_ARRAY[@]}"; do 
         case "${OPT_ARRAY[eachDrive]}" in
             1 )  
                 zenity --notification --text="Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]}" ; 
-                echo -e "\033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]}\007" ;
-                zenity --notification --text "\t Attempting to run rsync.\r\nAttempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]}" ; 
-                if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
+                echo -e " \033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]}\007" ;
+                zenity --notification --text " \t Attempting to run rsync.\r\nAttempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]}" ; 
+                if ! TAB_OVER rsync -rltH -S -pgo --stats -D --numeric-ids --no-i --info=name0 --info=progress2 -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
                 zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ; 
                 
-                echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[0]} exit status: Code: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null;;
+                echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[0]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null;;
                 
-                #-----------------------
+            #-----------------------
 
             [2-"${COUNT_FILES}"] )  
                 zenity --notification --text="Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
-                echo -e "\033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}\007" ;
-                zenity --notification --text "\t Attempting to run rsync.\r\nAttempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
-                if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
+                echo -e " \033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}\007" ;
+                zenity --notification --text " \t Attempting to run rsync.\r\nAttempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
+                if ! TAB_OVER rsync -rltH -S -pgo --stats -D --numeric-ids --no-i --info=name0 --info=progress2 -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
                 zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ; 
                 
-                echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status: Code: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null;;
+                echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null;;
                 
-                #-----------------------
+            #-----------------------
 
             "A"|"a" ) 
-                for i in $(seq 1 "${COUNT_FILES}"); do zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}" ; echo -ne "\033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}\007" ;
-                echo -e "\033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}\007" ;
-                zenity --notification --text "\t Attempting to run rsync.\r\n Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
-                if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
+                for i in $(seq 1 "${COUNT_FILES}"); do zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}" ; echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}\007" ;
+                echo -e " \033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}\007" ;
+                zenity --notification --text " \t Attempting to run rsync.\r\n Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
+                START_CURS_DANCE ; if ! TAB_OVER rsync -rltH -S -pgo --stats -D --numeric-ids --no-i --info=name0 --info=progress2 -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ; FINIS_CURS_DANCE ;
                 zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ; 
-                echo -e "$(date +%m-%d-%Y_%H%M) --> rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null ; 
+                echo -e "$(date +%m-%d-%Y_%H%M) --> rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ; 
                 done ;;
             
-                #-----------------------
+            #-----------------------
+            
             "S"|"s" ) 
                 unset SINGLE_ALL_HOST ;
                 SINGLE_ALL_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null;
                 if [[ $(( COUNT_FILES + 1 )) -gt 1 ]] ; then
-                    printf "\t%s" "Select one drive, 1-${COUNT_FILES}, from the drive choices above:" ; 
+                    printf " \t%s" "Select one drive, 1-${COUNT_FILES}, from the drive choices above:" ; 
                     read -r DRIVE_SEL ;
                     #   Terminal title change
-                    echo -e "\033]0;Syncing from ${SINGLE_ALL_HOST} to ${DRIVE_SEL}\007" ;
-                    zenity --notification --text "\t Attempting to run rsync.\r\n Attempting to run rsync from ${SINGLE_ALL_HOST} to ${DRIVE_SEL}" ; 
-                    if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
+                    echo -e " \033]0;Syncing from ${SINGLE_ALL_HOST} to ${DRIVE_SEL}\007" ;
+                    zenity --notification --text " \t Attempting to run rsync.\r\n Attempting to run rsync from ${SINGLE_ALL_HOST} to ${DRIVE_SEL}" ; 
+                    if ! TAB_OVER rsync -rltH -S -pgo --stats -D --numeric-ids --no-i --info=name0 --info=progress2 -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
                     zenity --notification --text "rsync from ${SINGLE_ALL_HOST} to ${DRIVE_SEL} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;
                 else 
                     until [[ "$yn" = "n" ]] || [[ "$yn" = "N" ]] || [[ "$yn" = "y" ]] || [[ "$yn" = "Y" ]]; do 
-                        echo -en "\tOnly one drive detected.\n\r\tDo you wish to copy this folder to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}. Y/N? ";  
+                        echo -en " \tOnly one drive detected.\n\r\tDo you wish to copy this folder to ${ALL_DRIVES_PATHS[0]}. Y/N? ";  
                         read -r yn ; 
                         case $yn in 
-                            "Y"|"y" ) echo -e "\r\nThank you. Continuing..." ; 
-                                zenity --notification --text "\t Attempting to run rsync.\r\n Attempting to run rsync from ${SINGLE_ALL_HOST} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" ; 
-                                if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
-                                zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;; 
+                            "Y"|"y" ) echo -e " \r\nThank you. Continuing..." ; 
+                                zenity --notification --text " \t Attempting to run rsync.\r\n Attempting to run rsync from ${SINGLE_ALL_HOST} to ${ALL_DRIVES_PATHS[0]}" ; 
+                                if ! TAB_OVER rsync -rltH -S -pgo --stats -D --numeric-ids --no-i-r --info=name0 --info=progress2 -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
+                                zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;; 
                             "N"|"n" ) echo OK. Exiting... ; pause ; exit ;; 
                             *) echo "Selection invalid! Try again." ; pause ;
                         esac ; 
                     done
-                        echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${DRIVE_SEL}, exit status: Code: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null ;
+                        echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${DRIVE_SEL}, exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 fi ;;
-                #-----------------------
+
+            #-----------------------
 
             "D"|"d" ) 
                 unset SINGLE_DIR_HOST ;
                 SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null;
                 for i in $(seq 1 "${COUNT_FILES}"); do 
-                zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}/" ; 
-                echo -ne "\033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[$i]}/\007" ;
-                if ! TAB_OVER sudo rsync "${RSYNC_FLAGS[*]}" -- "${THIS_DRIVE_PATHS}/" "${ALL_DRIVES_PATHS[0]}" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
-                zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                            
-                echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status: Code: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null ;
+                    zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}/" ; 
+                    echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}/\007" ;
+                    if ! TAB_OVER rsync -vrltH -S -pgo --stats -D --numeric-ids --no-i-r --info=name0 --info=progress2 -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]}" 2>&1 ; then  EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
+                    zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                            
+                    echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[ $(( OPT_ARRAY[eachDrive] - 1 )) ]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 done ;;
 
-                #-----------------------
+            #-----------------------
 
             "F"|"f" ) 
                 unset SINGLE_HOST ;
@@ -651,17 +650,16 @@ while true ; do
                 esac ; 
                 done ; zenity --notification --text "Attempting to run rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/" ; 
                 
-                echo -ne "\033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ; START_CURS_DANCE "${SINGLE_HOST}" "${NEW_MOUNT_PATH}" ;
-                if ! TAB_OVER sudo rsync --partial --human-readable --mkpath --info=name0 --log-file="${RSYNC_LOG}" --no-motd -- "${SINGLE_HOST}" "${NEW_MOUNT_PATH}/" 2>&1 ; then REASON="$(TRANSLATE_ERRORCODE "$?")" ; EXIT_CODE=$? ; fi
+                echo -ne " \033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ; START_CURS_DANCE "${SINGLE_HOST}" "${NEW_MOUNT_PATH}" ;
+                if ! TAB_OVER rsync -lauPh --info=name0 -- "${SINGLE_ALL_HOST}/" "${NEW_MOUNT_PATH}" 2>&1 ; then  EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi
                 zenity --notification --text "rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                            
-                echo -e "$(date +%m-%d-%Y_%H%M) --> rsync ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status: Code: ${EXIT_CODE} - ${REASON}" | tee "${RSYNC_LOG}" &>/dev/null ;;
-
-
+                echo -e "$(date +%m-%d-%Y_%H%M) --> rsync ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;;
 
             "Q"|"q" ) exit ;;
 
-            * )
-            printf '%s' "Selection invalid! Try again, " ; printf '\t%s\n' "$(read -n1 -srp 'press any key to continue...')"; ;;
+            #-----------------------
+
+            * ) printf '%s' "Selection invalid! Try again, " ; printf '\t%s\n' "$(read -srn1 -p 'Press any key to continue...')"; ;;
 
         esac
     done
