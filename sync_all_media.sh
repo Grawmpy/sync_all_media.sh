@@ -694,8 +694,5 @@ while true ; do
     #   End loop to process each menu option
     done ;
 
-#   Check if the keep_awake process is still running, if found kill process
-if ps -p "${awake_pid}" > /dev/null ; then kill -9 "${awake_pid}" ; fi ;
-
 #   End loop to configure, print out selection menu and run rsync program 
 done
