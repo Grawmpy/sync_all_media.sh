@@ -38,9 +38,9 @@
 
 #---- for debug ----- 
 #set -x  
-#-------------------- 
+#--------------------- 
 
-# uses yad instead of zenity if found for drive selection
+# uses yad instead of zenity if found 
 if which yad &>/dev/null ; 
 then yadzen=yad ;
 else yadzen=zenity ;
@@ -62,6 +62,28 @@ RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ;
 ###################################################################################################################################################
 
 #-------------------------------------------------------------------------------------------------------------------------------------------------- 
+
+###################################################################################################################################################
+#   Code to keep the computer from going into sleep mode during long copies. Sends signal every 120 seconds (2 minutes)
+#   Small python code to send a keep awake signal to the computer so it doesn't blank the screen.
+#   Found at https://askubuntu.com/questions/524384/how-can-i-keep-the-computer-awake-depending-on-activity
+read -r -d '' stay_awake <<'EOF'
+import subprocess
+import time
+seconds = 120 # number of seconds to start preventing blank screen / suspend
+while True:
+    curr_idle = subprocess.check_output(["xprintidle"]).decode("utf-8").strip()
+    if int(curr_idle) > seconds*1000:
+        subprocess.call(["xdotool", "key", "Control_L"])
+    time.sleep(10)
+EOF
+
+python3 - "${stay_awake}" &
+awake_pid=$!
+#   Hide the output for the PID echo for stay_awake going into a background process
+echo -e "\r";tput el;echo -e "\r"
+###################################################################################################################################################
+
 #-------------------------------------------------------------------------------------------------------------------------------------------------- 
 
 ###################################################################################################################################################
@@ -128,11 +150,10 @@ echo "${found_exc}" ;
 
 ###################################################################################################################################################
 #####################################################              START FUNCTION              ####################################################
-#
+#      
 #   Insert a tab at the beginning of every line piped through this command. Multiple calls enter multiple tabs. 
 #   Force a tab before stdout of a program like rsync that aligns all output to the left edge all the time. 
-# shellcheck disable=SC2128 disable=SC2034 
-TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do IFS='[;' return "${PIPESTATUS}" ; done } ;
+TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do IFS='[;' return "${PIPESTATUS[status]}" ; done } ;
 #####################################################               END FUNCTION               ####################################################
 ###################################################################################################################################################
 
@@ -250,14 +271,17 @@ fi ;
 #####################################################              START FUNCTION              ####################################################
 #
 RUN_RSYNC_PROG() { 
+
+RSYNC_FLAGS="-Shva -rltH -pgo --mkpath --no-motd"
+
 tput init ; tput sc ; tput civis ; tput ed ;
 #   Number of dots and spaces to write .....
 size=5 ; 
 host=$1 ;
 dest=$2
-declare exitcode ;
 printf '\t%s\r\t' "One moment. Checking destination drive..."
-while [[ "$( TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${host}/" "${dest[0]}" ; return $? )" ]] ; do  
+
+while rsync "${RSYNC_FLAGS}" -- "${host}/" "${dest}" | sed "s/^/$(date +%m-%d-%Y_%H%M)\t>>\t/" | tee -a "${RSYNC_LOG}" &>/dev/null ; [[ "${PIPESTATUS[0]}" != 0 ]] ; do
     #   Whole sequence takes about 15 seconds "Working....." The dots grow and fade
     unset i ;
     tput el ;
@@ -270,9 +294,9 @@ while [[ "$( TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${host}/" "${dest[0]}" ; ret
     printf '%s' " "; sleep 0.5 ; 
     done ; 
     printf '\r' ;
+    if [[ "${PIPESTATUS[0]}" -ne 0 ]] ; then return "${PIPESTATUS[0]}" ; fi ;
+    echo "${PIPESTATUS[0]}" ;
 done ; 
-exitcode=$?
-echo "${exitcode}" ; return "${exitcode}" ;
 }  
 ### ---------------------------------------------------------------- END FUNCTION ----------------------------------------------------------------- 
 ###################################################################################################################################################
@@ -505,14 +529,12 @@ declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <(
         printf "%-${#UNDER_ADP}s\t%-${#UNDER_FST}s\t%-${#UNDER_ADT}s\t%-${#UNDER_ADI}s\t%-${#UNDER_ADA}s\n" \
         "${ALL_DRIVES_PATHNAMES[eachUsableDrive]}" "${ALL_FILESYSTEMS[eachUsableDrive]}" "${HR_ALL_DRIVE_TOTALS[eachUsableDrive]}" "${HR_ALL_DRIVE_IUSED[eachUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[eachUsableDrive]}" ; done ) ;
 
-RSYNC_FLAGS=( -Sh -rltH -pgo --stats -D --numeric-ids --partial --mkpath --fsync ) 
-
 #   Put everything together and run the program ;
 while true ; do 
 #   Start loop to configure, print out menu and run rsync program 
 
     clear ;
-    echo -e "\n\n\r" ;
+    echo -e "\a\n\n\r" ;
     #   List information for the host drive selected
     echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
 
@@ -525,16 +547,16 @@ while true ; do
     echo -en '\n\a' ; # Inset a space and toggle bell for notification
 
     # List options available other than entering the number from drive listing
-    echo -en "\t\e[1;97mA\e[0m)  Backup to \e[1;97m\e[4;37mA\e[0mll drives above.\r\n" ;
-    echo -en "\t\e[1;97mS\e[0m)  Select Directory to back up to a \e[1;97m\e[4;37mS\e[0mingle drive\r\n" ;
-    echo -en "\t\e[1;97mD\e[0m)  Select \e[1;97m\e[4;37mD\e[0mirectory to back up to all drives.\r\n" ;
-    echo -en "\t\e[1;97mF\e[0m)  Select Directory or \e[1;97m\e[4;37mF\e[0mile to back up into any other Directory.\r\n\n" ;
-    echo -en "\t\e[1;97mQ\e[0m)  \e[1;97m\e[4;37mQ\e[0muit script\r\n\n" ;
+    echo -en "\t\e[0;97m" ; echo -n "A" ; echo -ne "\e[0m)  Backup to \e[1;97m\e[4;37mA\e[0mll drives above.\r\n" ;
+    echo -en "\t\e[0;97m" ; echo -n "S" ; echo -ne "\e[0m)  Select Directory to back up to a \e[1;97m\e[4;37mS\e[0mingle drive\r\n" ;
+    echo -en "\t\e[0;97m" ; echo -n "D" ; echo -ne "\e[0m)  Select \e[1;97m\e[4;37mD\e[0mirectory to back up to all drives.\r\n" ;
+    echo -en "\t\e[0;97m" ; echo -n "F" ; echo -ne "\e[0m)  Select Directory or \e[1;97m\e[4;37mF\e[0mile to back up into any other Directory.\r\n\n" ;
+    echo -en "\t\e[0;97m" ; echo -n "Q" ; echo -ne "\e[0m)  \e[1;97m\e[4;37mQ\e[0muit script\r\n\n" ;
     # Instructions
     echo -en "\tIf you would like to select more than one drive, enter the number \n" ;
     echo -en "\t  from the list above, separated by spaces, in any sequence. \n" ;
     echo -en "\t  'A' will cause all numbers entered to be ignored. \n" ;
-    echo -en "\t  The script will run all synchronization in the sequence you've provide.\n\r\n" ;
+    echo -en "\t  The script will run each process in the sequence you provide.\n\r\n" ;
     echo -en "\tSelect: ${NUM_SEQUENCE}, A, S, D, or F: " ;
     unset OPT OPT_TMP OPT_ARRAY ;
     #   Pause and wait for user selection entry....
@@ -564,16 +586,16 @@ while true ; do
             
             #----------------------- ;
             "A"|"a" ) 
-                for i in "${!ALL_DRIVES_PATHS[@]}" ; do  
-                    zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[i]}" ; 
+                for a in "${!ALL_DRIVES_PATHS[@]}" ; do  
+                    zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[a]}" ; 
                     #   Place a title on the terminal top ;
-                    echo -e " \033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[i]}\007" ;
+                    echo -e " \033]0;Syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[a]}\007" ;
                     #  Start the rsync program ;
-                    RUN_RSYNC_PROG "${DRIVE_NAME}" "${ALL_DRIVES_PATHS[i]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
+                    RUN_RSYNC_PROG "${DRIVE_NAME}" "${ALL_DRIVES_PATHS[a]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
                     #   Announce error ;
-                    zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[i]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ; 
+                    zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[a]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ; 
                     #   Echo status to log ;
-                    echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[i]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
+                    echo "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[a]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 done  ;
                 ;;  #   end case selection ;
         
@@ -615,16 +637,16 @@ while true ; do
             #----------------------- ;
             "D"|"d" ) 
                 unset SINGLE_DIR_HOST ;
-                SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[i]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null ;
-                for i in "${!ALL_DRIVES_PATHS}"; do  
-                    zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[i]}/" ; 
-                    echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[i]}/\007" ;
+                SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[d]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null ;
+                for d in "${!ALL_DRIVES_PATHS}"; do  
+                    zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/" ; 
+                    echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/\007" ;
                     #  Start the little dancing cursor ;
-                    RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${ALL_DRIVES_PATHS[i]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
+                    RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${ALL_DRIVES_PATHS[d]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
 
                     #if ! TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[i]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ;
-                    zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[i]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
-                    echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[i]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
+                    zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[d]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
+                    echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[d]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 done  ;
             ;; #   end case selection ;
             #----------------------- ;
@@ -671,5 +693,9 @@ while true ; do
         esac ;
     #   End loop to process each menu option
     done ;
+
+#   Check if the keep_awake process is still running, if found kill process
+if ps -p "${awake_pid}" > /dev/null ; then kill -9 "${awake_pid}" ; fi ;
+
 #   End loop to configure, print out selection menu and run rsync program 
 done
