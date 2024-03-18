@@ -47,7 +47,7 @@ xset s noblank
 xset -dpms
 
 
-# uses yad instead of zenity if found 
+# uses yad instead of zenity if found for drive selection
 if which yad &>/dev/null ; 
 then yadzen=yad ;
 else yadzen=zenity ;
