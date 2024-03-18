@@ -40,13 +40,6 @@
 #set -x  
 #-------------------- 
 
-#   Turn off screensaver and blanking of the screen while script is running.
-export DISPLAY=:0.0
-xset s off
-xset s noblank
-xset -dpms
-
-
 # uses yad instead of zenity if found for drive selection
 if which yad &>/dev/null ; 
 then yadzen=yad ;
@@ -678,10 +671,5 @@ while true ; do
         esac ;
     #   End loop to process each menu option
     done ;
-#   Reverse settings for screensaver and screen blanking
-export DISPLAY=:0.0
-xset s on
-xset s blank
-xset +dpms
 #   End loop to configure, print out selection menu and run rsync program 
 done
