@@ -404,7 +404,7 @@ declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <(
 while true ; do 
 #   Start loop to configure, print out menu and run rsync program 
 tput bel
-    #clear ;
+    clear ;
     echo -e "\a\n\n\r" ;
     #   List information for the host drive selected
     echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
