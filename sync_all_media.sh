@@ -6,7 +6,7 @@
 #                                                                                                 
 #    Creation : 30 April 2023                                                                      
 #    Modify Date : 17 March 2024    
-#    Production version : 4.0.0a                                                    
+#    Production version : 4.3.1a                                                    
 #                                                                                                                       
 #    After host drive selection the script looks at the other attached peripherals to see if any drives 
 #    are large enough to contain the entire backup in a one-to-one backup only.             
@@ -40,148 +40,58 @@
 #set -x  
 #--------------------- 
 
-# uses yad instead of zenity if found 
-if which yad &>/dev/null ; 
-then yadzen=yad ;
-else yadzen=zenity ;
-fi ;
+###################################################################################################################################################
+#   Check if yad is installed.
+which yad &>/dev/null && yadzen=yad || yadzen=zenity ;
 
 ###################################################################################################################################################
-######################################################       START INITIAL GLOBAL VARIABLES       #################################################
 #   Get the logged in user's username 
-if [[ $( whoami ) = "root" ]] ; then PRIME_SUDOER=$SUDO_USER ; else PRIME_SUDOER=$( whoami ) ; fi ;
+[[ $( whoami ) = "root" ]] && PRIME_SUDOER=$SUDO_USER || PRIME_SUDOER=$( whoami ) ; 
+
+###################################################################################################################################################
 #   Set the pathway to the /media directory ;
 MEDIA_PATH="/media/${PRIME_SUDOER}" ;
-#    Increase the terminal window size to 110x40 ;
+
+###################################################################################################################################################
+#   Increase the terminal window size to 110x40 ;
 printf '\033[8;40;110t' ;
+
+###################################################################################################################################################
 #   DEFINE THE LOG FILE FOR RSYNC TO USE TO  ;
-! [[ -d "/home/${PRIME_SUDOER}/rsync_logs" ]] && mkdir "/home/${PRIME_SUDOER}/rsync_logs" ;
-RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ;
+! [[ -d "/home/${PRIME_SUDOER}/rsync_logs" ]] && mkdir "/home/${PRIME_SUDOER}/rsync_logs" ; 
+RSYNC_LOG="/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log" ; 
 ! [[ -f "${RSYNC_LOG}" ]] && touch "${RSYNC_LOG}" ; 
-#######################################################        END INITIAL GLOBAL VARIABLES        ################################################
-###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- 
 
 ###################################################################################################################################################
-#   Code to keep the computer from going into sleep mode during long copies. Sends signal every 120 seconds (2 minutes)
-#   Small python code to send a keep awake signal to the computer so it doesn't blank the screen.
-#   Found at https://askubuntu.com/questions/524384/how-can-i-keep-the-computer-awake-depending-on-activity
-read -r -d '' stay_awake <<'EOF'
-import subprocess
-import time
-seconds = 120 # number of seconds to start preventing blank screen / suspend
-while True:
-    curr_idle = subprocess.check_output(["xprintidle"]).decode("utf-8").strip()
-    if int(curr_idle) > seconds*1000:
-        subprocess.call(["xdotool", "key", "Control_L"])
-    time.sleep(10)
-EOF
-
-python3 - "${stay_awake}" &
-awake_pid=$!
-#   Hide the output for the PID echo for stay_awake going into a background process
-echo -e "\r";tput el;echo -e "\r"
-###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- 
-
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
-#   The variable DRIVE_MOUNT_PATH below will be blank if anything outside of the media path is selected, or if the request is cancelled. 
+#   The variable host_drive_sel below will be blank if anything outside of the media path is selected, or if the request is cancelled. 
 #   Both will give an error of a blank variable.  
 #   While the variable is not set, repeat the request until it's filled, if not, exit. ;
 GET_HOST() { 
-unset DRIVE_MOUNT_PATH EXIT_CODE HOST_NAME DRIVE_NAME ;
-export DRIVE_NAME ;
-while  [[ -z ${HOST_NAME+x} ]] ; do 
-    while [[ -z ${DRIVE_MOUNT_PATH+x} ]]; do 
-        if ! DRIVE_MOUNT_PATH=$(${yadzen} --file-selection --title="Select a media drive" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") ; then  
-            return 1 ; 
-        fi ;
-    done ;
-    HOST_NAME=$(basename "${DRIVE_MOUNT_PATH}") ;
-done ;
-DRIVE_NAME="${MEDIA_PATH}/${HOST_NAME}" ;
-if ! cd "${DRIVE_NAME}" ; then echo -ne "Changing directory to ${DRIVE_NAME} failed. Attempting another try." ; 
-    if ! cd "${DRIVE_NAME}" ; then echo -ne "Second attempt at changing directory to ${DRIVE_NAME} failed. Exiting." ; pause ; exit ; fi ;
-fi  ;
-check=${PWD} ;
-if [[  "${check}" == "${DRIVE_NAME}"  ]] ; then 
-echo -e "${DRIVE_NAME}\n" ; 
-return 0 ;
-fi ;
-} ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------
-
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
-#   List of files and directories to exclude from rsync.  
-#   If you want a specific file or directory instead of a general blacklist use full path not including "/media/<drivename>/" 
-#   Enter any exclusions below in the form of --exclude=\"<file or directory name>\" 
-#   The reason I am doing this here is that I need to have the host drive chosen before I can check to see if the excluded files exist. 
-#   Making the checking and adding the files or directories more accurate than just assigning all exclusion variables risking file not found errors.
-
-FIND_EXCLUDES(){ 
-    unset host found_exc ; 
-    local host found_exc ;
-    host="${DRIVE_NAME}" ; 
-    #  Linux specific directories ;
-    if find ".Trash-1000" &>/dev/null ; then found_exc+="--exclude=\".Trash-1000\" " ; fi ;
-    if find "lost+found" &>/dev/null ; then  found_exc+="--exclude=\"lost+found\" " ; fi  ;
-    if find "timeshift" &>/dev/null ; then  found_exc+="--exclude=\"timeshift\" " ; fi ;
-    #   Windows directories on media for dual boot systems ;
-    if find "System Volume Information" &>/dev/null ; then found_exc+="--exclude=\"System Volume Information\" " ; fi ;
-    if find "\$RECYCLE.BIN" &>/dev/null ; then found_exc+="--exclude=\"${host}\$RECYCLE.BIN\" " ; fi ;
-echo "${found_exc}" ;
+unset host_drive_sel host_name drive_path ;
+local host_drive_sel host_name ;
+export drive_path ;
+while  [[ -z ${host_name+x} ]] ; do while [[ -z ${host_drive_sel+x} ]] ; 
+do if ! host_drive_sel=$(${yadzen} --file-selection --title="Select a media drive" --directory --filename="${MEDIA_PATH}/") ; then  
+return 1 ; fi ; done ; 
+host_name=$(basename "${host_drive_sel}") ; done ; 
+drive_path="${MEDIA_PATH}/${host_name}" ;
+if ! cd "${host_drive_sel}" ; then echo -ne "Changing directory to ${drive_path} failed. Attempting another try." ; 
+    if ! cd "${host_drive_sel}" ; then echo -ne "Second attempt at changing directory to ${drive_path} failed. Exiting." ; pause ; exit ; fi ;
+fi ; 
+check="$(basename "${PWD}")" ; 
+if [[  "${check}" == "${host_name}"  ]] ; then echo -e "${drive_path}\n" ; return 0 ; else return 1 ; fi ; 
 } ;
 
-#####################################################               END FUNCTION               ####################################################
 ###################################################################################################################################################
-
-###################################################################################################################################################
-#####################################################       START OF FUNCTION DEFINITIONS      ####################################################
-###################################################################################################################################################
-
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#      
-#   Insert a tab at the beginning of every line piped through this command. Multiple calls enter multiple tabs. 
-#   Force a tab before stdout of a program like rsync that aligns all output to the left edge all the time. 
-TAB_OVER (){ "$@" |& sed "s/^/\t/" ; for status in "${!PIPESTATUS}"; do IFS='[;' return "${PIPESTATUS[status]}" ; done } ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- ;
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
 #   Create a pause function that works similar to the windows version ;
 pause()( printf '%s\n'  "$(read -rsn 1 -p 'Press any key to continue...')" ) ;
 
-#####################################################               END FUNCTION               ####################################################
 ###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- ;
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
 #   This function verifies whether a function has been loaded into memory and is available for use in this script.  
 #   0 - found and ready, 1 - Not available (error) 
-
 VERIFY_FUNCTION(){ [[ "$(LC_ALL=C type -t "$1")" && "$(LC_ALL=C type -t "$1")" == function ]] ;} ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
 
-#-------------------------------------------------------------------------------------------------------------------------------------------------- ;
 ###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
 #   Define the errorcodes produced by rsync ;
 TRANSLATE_ERRORCODE(){ 
 X_CODE=$1;
@@ -204,109 +114,97 @@ X_CODE=$1;
         25 )   CODE="The --max-delete limit stopped deletions";; 
         30 )   CODE="Timeout in data send/receive";; 
         35 )   CODE="Timeout waiting for daemon connection";; 
-        *)     CODE="Invalid errorcode. Fatal error" ; X_CODE=99 ;; 
+        *)     CODE="Unknown or Invalid exit code sent. Code: ${X_CODE} " ;; 
     esac ;
     printf '"Error Code %s: \t%s\n' "${X_CODE}" "${CODE}" ; return "${X_CODE}" ;
 } ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- 
 
 ###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
 #   Get the number of characters needed to create the underline section in the menu 
 #   The character doesn't matter here, the variable is merely for width and is for  a width placeholder only ;
-UNDERLINE()( 
+UNDERLINE(){ 
     unset input output ;
     local input output ;
     input="$(( $1 + 3 ))" ; 
     output=$( for i in $( seq 0 ${input} ); do printf '%s' "_" ;  done ) ;
     echo "${output}" ;
-) ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------
+ } ;
 
 ###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
-#   This function allows the user to find a windows partition by using fdisk's file information listing the type flags. 
-#   Instead of looking for the drive type flag 'Microsoft basic data', which is the label where a Windows 
-#   OS C:\ drive would be located, (any ntfs formatted drive also returns a hit searching for the same flag), so 
-#   we need to narrow the search down a bit more first.  
-#
-#   By searching instead for the 'Microsoft reserved' type flag, this will point to the same drive where the Windows  
-#   OS will be installed since Microsoft places these two on the same drive during installation. By getting the first three  
-#   characters of the filesystem path, after eliminating the "/dev/", we can use that informationn to narrow down the  
-#   search to determine if a Windows OS drive is attached. I have successful testing on my own laptop with a dual boot  
-#   Windows partition, on an nvme M.2 internal drive. If this does find the Windows OS drive partition, this next looks  
-#   to see if it might be mounted and, if it is, unmount it before running this script so nothing can happen to the drive. 
-#   We store this information into a variable to use to eliminate that partition from any of the rsync searches. ;
-FIND_WIN_PARTITION()( 
-    unset findWindowsDrive findWinRecovPartition findWindowsCompare ;
-    local findWindowsDrive findWinRecovPartition findWindowsCompare ;
-    findWinRecovPartition=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ;
-    #   Moves right past first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
-    findWindowsCompare="${findWinRecovPartition:5:3}" ;
-    if eval sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | awk '{print $1}' ; then  
+#   Check to see if a windows os partition is connected to keep it from the drives found in the search. 
+#   Searches with fdisk first for 'Microsoft reserved' type flag from uses that path to find the drive with the OS; they are on the same physical drive.
+#   Looks to see if the drive is mounted, if it is, unmounts.
+#   Comment out below if you do not want the windows drive unmounted
+unmount="true"
+FIND_WIN_PARTITION(){ 
+unset findWindowsDrive findWinRecovPartition findWindowsCompare ;
+local findWindowsDrive findWinRecovPartition findWindowsCompare ;
+findWinRecovPartition=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ;
+#   Moves right past first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
+findWindowsCompare="${findWinRecovPartition:5:3}" ;
+if eval sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | awk '{print $1}' ; then  
     #   Using the infomation from above leads us to the ntfs partition of the drive containing the Windows OS. ;
     findWindowsDrive="$(sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | grep -v "/media" | awk '{print $1}')" &>/dev/null ;
-    #   Windows found ... boo ... bad ... but I have to send a successful find. ;
-    if df | grep "$findWindowsDrive" &>/dev/null ; then sudo umount -f "$findWindowsDrive" ; fi ;
+    #   If you do not want the drive to unmount, change the variable to 'unmount="false"' above
+    if [[ "${unmount}" == "true" ]] ; then 
+        if df | grep "$findWindowsDrive" &>/dev/null ; 
+            then sudo umount -f "$findWindowsDrive" ; 
+        fi ; 
+    fi
     #   If the drive information has been found and retrieved return success and echo the filesystem pathname as well return 0, success. ;
-    if [[ -n "${findWindowsDrive}"  ]]; then echo "${findWindowsDrive}" ; return 0 ; fi ;
+    if [[ -n "${findWindowsDrive}" ]] ; then { echo "${findWindowsDrive}" ; return 0 ; } ; fi ;
     #   No windows partition information was found so return a failure, code = 1 ;
-    else [[ -z ${findWinRecovPartition} ]] && return 1 ;
+else [[ -z ${findWinRecovPartition} ]] && return 1 ;
 fi ;
-) ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------
+}
 
 ###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
+#   Simple function to place a tab in front of every piped line.
+TAB_OVER (){ "$@" |& sed "s/^/\t/" ; return "${PIPESTATUS[0]}" ; } ;
+
+
+
+###################################################################################################################################################
+#   Run rsync from the gathered data and use a Waiting animation while running
 RUN_RSYNC_PROG() { 
-
-RSYNC_FLAGS="-Shva -rltH -pgo --mkpath --no-motd"
-
-tput init ; tput sc ; tput civis ; tput ed ;
-#   Number of dots and spaces to write .....
-size=5 ; 
-host=$1 ;
-dest=$2
-printf '\t%s\r\t' "One moment. Checking destination drive..."
-
-while rsync "${RSYNC_FLAGS}" -- "${host}/" "${dest}" | sed "s/^/$(date +%m-%d-%Y_%H%M)\t>>\t/" | tee -a "${RSYNC_LOG}" &>/dev/null ; [[ "${PIPESTATUS[0]}" != 0 ]] ; do
-    #   Whole sequence takes about 15 seconds "Working....." The dots grow and fade
-    unset i ;
-    tput el ;
-    printf '\r\tWorking' ;
-    for (( i=1 ; i<="${size}" ; i++ )) ; do  
-    printf '%s' "."; sleep 0.5 ; 
+    RSYNC_EXCLUDES="--exclude=.Trash-1000 --exclude=lost+found --exclude=timeshift --exclude='System Volume Information' --exclude=\$RECYCLE.BIN" ;
+    host="${1:-}" ; dest="${2:-}" ;
+    find_drive="$(df | grep "$(basename "${dest}")")"
+    unset tfs tdp rt ru ra ; declare tfs tdp rt ru ra  ; 
+    if ! tdp="$(echo "${find_drive}" | awk '{ print $6 }')" ; then echo "Error declaring or populating the variable 'tdp'" ; fi ;
+    if ! tfs="$(echo "${find_drive}" | awk '{ print $1 }')" ; then echo "Error declaring or populating the variable  'tfs'" ; fi ;
+    tdt=$(( "$(echo "${find_drive}" | awk '{ print $2 }' | sed "s/[^0-9]*//g" )" * 1000 ))
+    if ! rt="$( numfmt --to=si --suffix="b" "${tdt}")" ; then echo "Error declaring or populating the variable 'rt'" ; fi ; 
+    tdu=$(( "$(echo "${find_drive}" | awk '{ print $3 }' | sed "s/[^0-9]*//g" )" * 1000 ))
+    if ! ru="$( numfmt --to=si --suffix="b" "${tdu}")" ; then echo "Error declaring or populating the variable 'ru'" ; fi ;
+    tda=$(( "$(echo "${find_drive}" | awk '{ print $4 }' | sed "s/[^0-9]*//g" )" * 1000 ))
+    if ! ra="$( numfmt --to=si --suffix="b" "${tda}")" ; then echo "Error declaring or populating the variable 'ra'" ; fi ;
+    tput civis ; dots=5 ; 
+    TAB_OVER rsync -achlmrv --numeric-ids --fsync --mkpath --log-file="${RSYNC_LOG}" "${RSYNC_EXCLUDES}" --log-file-format="%t: %o %f %b" -- "${host}/" "${dest}" & my_pid=$! ; 
+    tput clear ; 
+    echo -e "\a\n\n\r" ;
+    echo -en "  \tHost Drive:  $(basename "${DRIVE_NAME}") \n\t\tLocation: \e[2;37m${THIS_FILESYSTEMS}\e[0m Total: \e[2;37m${READABLE_TOTAL}\e[0m Used: \e[2;37m${READABLE_IUSED}\e[0m Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
+    echo -en "  \tDestination: $(basename "${tdp}") \n\t\tLocation: \e[2;37m${tfs}\e[0m Total: \e[2;37m${rt}\e[0m Used: \e[2;37m${ru}\e[0m Avail: \e[2;37m${ra}\e[0m \r\n"
+    echo -en '\n\n\n\t' ; 
+    echo -e "rsync is now running... Please wait. \n\tThe menu will reappear when the program is finished." ;
+    tput sc ; 
+    IFS='[;' read -rsd R -p $'\e[6n' _ ROW COL
+    while [ -d /proc/"${my_pid}" ] ; do
+        unset i ; tput cup "$ROW" "$COL" ; printf '\r\tWorking\033[K' ;
+        for (( i=1 ; i<="${dots}" ; i++ )) ; do printf '%s' "."; sleep 0.5 ; done ; 
+        printf '\r\tWorking\033[K' ;
+        for (( i=1 ; i<="${dots}" ; i++ )) ; do printf '%s' " "; sleep 0.5 ; done ; 
+        tput rc ;
     done ; 
-    printf '\r\tWorking' ;
-    for (( i=1 ; i<="${size}" ; i++ )) ; do  
-    printf '%s' " "; sleep 0.5 ; 
-    done ; 
-    printf '\r' ;
-    if [[ "${PIPESTATUS[0]}" -ne 0 ]] ; then return "${PIPESTATUS[0]}" ; fi ;
-    echo "${PIPESTATUS[0]}" ;
-done ; 
-}  
-### ---------------------------------------------------------------- END FUNCTION ----------------------------------------------------------------- 
-###################################################################################################################################################
+    wait "${my_pid}" ; errorcode=$? ;
+    reason=$(TRANSLATE_ERRORCODE "${errorcode}") ;
+    echo "${reason}" ; tput cvvis ; return "${errorcode}" ; 
+} ;
 
-#--------------------------------------------------------------------------------------------------------------------------------------------------
 
 ###################################################################################################################################################
-### --------------------------------------------------------------- START FUNCTION ----------------------------------------------------------------
-
-chk_a_option(){ 
+#   Filter the entered menu selection and remove any spaces and doubled characters, looks for 'A' and removes numbers if found
+CHK_A_OPT(){ 
     unset input0 input1 output0 ;
     declare input0 input1 contr_char ;
     declare -i chkinput0 ; 
@@ -334,32 +232,6 @@ chk_a_option(){
     return 0 ;
 }; 
 
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------
-
-###################################################################################################################################################
-#####################################################              START FUNCTION              ####################################################
-#
-#   <FOR FUTURE USE ; NOT IMPLEMENTED AT THIS TIME> 
-#   Separate each character in a string and output each individually.  
-#   Sufficient to populate an array in use of collecting arguements passed to a command or function ;
-separate_string()(input=$1 ; for each in $( seq 0 $(( ${#input} - 1 )) ) ; do echo "${input:$each:1}" ; done) ;
-#####################################################               END FUNCTION               ####################################################
-###################################################################################################################################################
-
-###################################################################################################################################################
-######################################################       END OF FUNCTION DEFINITIONS      #####################################################
-###################################################################################################################################################
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------- 
-#--------------------------------------------------------------------------------------------------------------------------------------------------
-
-###################################################################################################################################################
-# Start of gathering drive data information  
-###################################################################################################################################################
-
 ###################################################################################################################################################
 #   Start host drive data gathering and variable assignment
 #   Check and run the function to do the host drive selection.
@@ -370,9 +242,8 @@ if ! THIS_FILESYSTEMS="$(df | grep "$(basename "${DRIVE_NAME}")" | awk '{ print 
     then echo "Either the gathering of filesystem information or population of THIS_FILESYSTEMS failed." ; 
 fi ;
 #   Total storage space on the host drive 
-unset THIS_DRIVE_TOTAL READABLE_TOTAL ; declare THIS_DRIVE_TOTAL READABLE_TOTAL ; [[ ${DRIVE_NAME} ]] && { 
-# Using the extra IF I can eliminate error checking using exit codes
-if ! { 
+unset THIS_DRIVE_TOTAL READABLE_TOTAL ; declare THIS_DRIVE_TOTAL READABLE_TOTAL ; 
+[[ ${DRIVE_NAME} ]] && { if ! { 
     if THIS_DRIVE_TOTAL="$(df | grep "$(basename "${DRIVE_NAME}")" | awk '{ print $2 }' | sed "s/[^0-9]*//g" )" ; 
     then READABLE_TOTAL="$( echo $(( THIS_DRIVE_TOTAL * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
 fi } ; 
@@ -532,8 +403,8 @@ declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <(
 #   Put everything together and run the program ;
 while true ; do 
 #   Start loop to configure, print out menu and run rsync program 
-
-    clear ;
+tput bel
+    #clear ;
     echo -e "\a\n\n\r" ;
     #   List information for the host drive selected
     echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
@@ -564,7 +435,7 @@ while true ; do
     #   After menu selection entry is done, run a function to filter out possible spaces and duplicate entries before
     #   checking for an 'A' entry which would override any number selection entered.
     #   This will take all those entries and convert them into an array that can be used by the case statement for each selection
-    mapfile -t OPT_ARRAY < <( chk_a_option "${OPT_TMP}" ) ;
+    mapfile -t OPT_ARRAY < <( CHK_A_OPT "${OPT_TMP}" ) ;
 
     #   Start loop to process each menu selection option
     for eachDrive in "${!OPT_ARRAY[@]}" ; do  
@@ -641,10 +512,7 @@ while true ; do
                 for d in "${!ALL_DRIVES_PATHS}"; do  
                     zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/" ; 
                     echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/\007" ;
-                    #  Start the little dancing cursor ;
                     RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${ALL_DRIVES_PATHS[d]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
-
-                    #if ! TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[i]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ;
                     zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[d]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
                     echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[d]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 done  ;
@@ -678,11 +546,8 @@ while true ; do
                     *) if [[ ${count} -eq 1 ]] ; then echo -n "Again... " ; count=$(( count + 1 )) ;  else echo -n "Once again... Try number #${count}. " ; fi ; count=$(( count + 1 )) ;
                 esac ; 
                 done ; zenity --notification --text "Attempting to run rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/" ; 
-            
-                echo -ne " \033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ; RUN_RSYNC_PROG "${SINGLE_HOST}" "${NEW_MOUNT_PATH}" ;
-                #  Start the little dancing cursor ;
-                RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${NEW_MOUNT_PATH}" ;
-                #if ! TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${SINGLE_ALL_HOST}/" "${NEW_MOUNT_PATH}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ;
+                echo -ne " \033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ;
+                RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${NEW_MOUNT_PATH}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
                 zenity --notification --text "rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
                 echo -e "$(date +%m-%d-%Y_%H%M) --> rsync ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null  ;
             ;; #   end case selection ;
