@@ -6,7 +6,7 @@
 #                                                                                                 
 #    Creation : 30 April 2023                                                                      
 #    Modify Date : 17 March 2024    
-#    Production version : 4.3.1a                                                    
+#    Production version : 4.4.0b                                                   
 #                                                                                                                       
 #    After host drive selection the script looks at the other attached peripherals to see if any drives 
 #    are large enough to contain the entire backup in a one-to-one backup only.             
@@ -137,32 +137,30 @@ UNDERLINE(){
 #   Comment out below if you do not want the windows drive unmounted
 unmount="true"
 FIND_WIN_PARTITION(){ 
-unset findWindowsDrive findWinRecovPartition findWindowsCompare ;
-local findWindowsDrive findWinRecovPartition findWindowsCompare ;
-findWinRecovPartition=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ;
+unset FIND_WIN_OS FIND_WIN_REC WIN_OS_DRIVE ;
+local FIND_WIN_OS FIND_WIN_REC WIN_OS_DRIVE ;
+FIND_WIN_REC=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ;
 #   Moves right past first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
-findWindowsCompare="${findWinRecovPartition:5:3}" ;
-if eval sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | awk '{print $1}' ; then  
+WIN_OS_DRIVE="${FIND_WIN_REC:5:3}" ;
+if eval sudo fdisk -l | grep "${WIN_OS_DRIVE}" | grep "Microsoft basic data" | awk '{print $1}' ; then  
     #   Using the infomation from above leads us to the ntfs partition of the drive containing the Windows OS. ;
-    findWindowsDrive="$(sudo fdisk -l | grep "${findWindowsCompare}" | grep "Microsoft basic data" | grep -v "/media" | awk '{print $1}')" &>/dev/null ;
+    FIND_WIN_OS="$(sudo fdisk -l | grep "${WIN_OS_DRIVE}" | grep "Microsoft basic data" | grep -v "/media" | awk '{print $1}')" &>/dev/null ;
     #   If you do not want the drive to unmount, change the variable to 'unmount="false"' above
     if [[ "${unmount}" == "true" ]] ; then 
-        if df | grep "$findWindowsDrive" &>/dev/null ; 
-            then sudo umount -f "$findWindowsDrive" ; 
+        if df | grep "$FIND_WIN_OS" &>/dev/null ; 
+            then sudo umount -f "$FIND_WIN_OS" ; 
         fi ; 
     fi
     #   If the drive information has been found and retrieved return success and echo the filesystem pathname as well return 0, success. ;
-    if [[ -n "${findWindowsDrive}" ]] ; then { echo "${findWindowsDrive}" ; return 0 ; } ; fi ;
+    if [[ -n "${FIND_WIN_OS}" ]] ; then { echo "${FIND_WIN_OS}" ; return 0 ; } ; fi ;
     #   No windows partition information was found so return a failure, code = 1 ;
-else [[ -z ${findWinRecovPartition} ]] && return 1 ;
+else [[ -z ${FIND_WIN_REC} ]] && return 1 ;
 fi ;
 }
 
 ###################################################################################################################################################
 #   Simple function to place a tab in front of every piped line.
 TAB_OVER (){ "$@" |& sed "s/^/\t/" ; return "${PIPESTATUS[0]}" ; } ;
-
-
 
 ###################################################################################################################################################
 #   Run rsync from the gathered data and use a Waiting animation while running
@@ -173,8 +171,9 @@ RUN_RSYNC_PROG() {
     unset tfs tdp rt ru ra ; declare tfs tdp rt ru ra  ; 
     if ! tdp="$(echo "${find_drive}" | awk '{ print $6 }')" ; then echo "Error declaring or populating the variable 'tdp'" ; fi ;
     if ! tfs="$(echo "${find_drive}" | awk '{ print $1 }')" ; then echo "Error declaring or populating the variable  'tfs'" ; fi ;
-    tdt=$(( "$(echo "${find_drive}" | awk '{ print $2 }' | sed "s/[^0-9]*//g" )" * 1000 ))
-    if ! rt="$( numfmt --to=si --suffix="b" "${tdt}")" ; then echo "Error declaring or populating the variable 'rt'" ; fi ; 
+    tdt=$(( "$(echo "${find_drive}" | awk '{ print $2 }' | sed "s/[^0-9]*//g" )" * 1000 )) ;
+    if ! rt="$( numfmt --to=si --suffix="b" "${tdt}" )" ; then echo "Error declaring or populating the variable 'rt'" ; fi ; 
+    rt="${rt::-1}"
     tdu=$(( "$(echo "${find_drive}" | awk '{ print $3 }' | sed "s/[^0-9]*//g" )" * 1000 ))
     if ! ru="$( numfmt --to=si --suffix="b" "${tdu}")" ; then echo "Error declaring or populating the variable 'ru'" ; fi ;
     tda=$(( "$(echo "${find_drive}" | awk '{ print $4 }' | sed "s/[^0-9]*//g" )" * 1000 ))
@@ -183,8 +182,8 @@ RUN_RSYNC_PROG() {
     TAB_OVER rsync -achlmrv --numeric-ids --fsync --mkpath --log-file="${RSYNC_LOG}" "${RSYNC_EXCLUDES}" --log-file-format="%t: %o %f %b" -- "${host}/" "${dest}" & my_pid=$! ; 
     tput clear ; 
     echo -e "\a\n\n\r" ;
-    echo -en "  \tHost Drive:  $(basename "${DRIVE_NAME}") \n\t\tLocation: \e[2;37m${THIS_FILESYSTEMS}\e[0m Total: \e[2;37m${READABLE_TOTAL}\e[0m Used: \e[2;37m${READABLE_IUSED}\e[0m Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
-    echo -en "  \tDestination: $(basename "${tdp}") \n\t\tLocation: \e[2;37m${tfs}\e[0m Total: \e[2;37m${rt}\e[0m Used: \e[2;37m${ru}\e[0m Avail: \e[2;37m${ra}\e[0m \r\n"
+    echo -en "  \tHost Drive:  ${DRIVE_NAME}\n\t\tLocation: \e[2;37m${THIS_FILESYSTEMS}\e[0m Total: \e[2;37m${READABLE_TOTAL}\e[0m Used: \e[2;37m${READABLE_USED}\e[0m Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
+    echo -en "  \tDestination: ${tdp}\n\t\tLocation: \e[2;37m${tfs}\e[0m Total: \e[2;37m${rt}\e[0m Used: \e[2;37m${ru}\e[0m Avail: \e[2;37m${ra}\e[0m \r\n"
     echo -en '\n\n\n\t' ; 
     echo -e "rsync is now running... Please wait. \n\tThe menu will reappear when the program is finished." ;
     tput sc ; 
@@ -200,37 +199,6 @@ RUN_RSYNC_PROG() {
     reason=$(TRANSLATE_ERRORCODE "${errorcode}") ;
     echo "${reason}" ; tput cvvis ; return "${errorcode}" ; 
 } ;
-
-
-###################################################################################################################################################
-#   Filter the entered menu selection and remove any spaces and doubled characters, looks for 'A' and removes numbers if found
-CHK_A_OPT(){ 
-    unset input0 input1 output0 ;
-    declare input0 input1 contr_char ;
-    declare -i chkinput0 ; 
-    declare -ax output0 ;
-    contr_char='A' ;
-    if [[ -z $1 ]] ; then return 1 ; fi ;
-    #   Convert all letters to upper case for ease of use. ;
-    input0="$1" ; input0="${input0^^}" ;
-    #   Count the numbers of characters passed to the function, if only one here echo and return success ;
-    if [[ "${#input0}" -eq 1 ]] ; then echo "${input0}" ; return 0 ; fi ;
-    #   Remove any duplicate characters ;
-    input0=$( echo "$input0" | sed 's/./&\n/g' | perl -ne '$H{$_}++ or print' | tr -d '\n' ; ) ;
-    # Recount to see if the control character is present after removing dupes ;
-    chkinput0="$( echo "${input0}" | grep -c "${contr_char}" )" ;
-    #   If yes remove all numeric digits from the list. If no, keep everything as is  ;
-    if [[ "${chkinput0}" -gt 0 ]] ; then input1="${input0//[0-9]/}" ; fi ;
-        #   Count the number of characters left after filtering ;
-        #   If there is only one character left, no need to loop, echo the character and return success ;
-        if [[ "${#input1}" -eq 1 ]] ; then echo "${input1}" ; return 0 ; fi ;
-        count=$(( "${#input1}" -1 )) ;
-    #   Split the arguements entered into an array for later case statement ;
-    for each in $( seq 0 $count ) ; do output0+=("${input1:$each:1}") ; done ;
-    #   Return the array with success ;
-    echo "${output0[@]}" ;
-    return 0 ;
-}; 
 
 ###################################################################################################################################################
 #   Start host drive data gathering and variable assignment
@@ -249,13 +217,13 @@ unset THIS_DRIVE_TOTAL READABLE_TOTAL ; declare THIS_DRIVE_TOTAL READABLE_TOTAL 
 fi } ; 
 then echo "Error declaring or populating the variables THIS_DRIVE_TOTAL or READABLE_TOTAL" ; fi } ;
 #   Total drive space used ;
-unset THIS_DRIVE_IUSED READABLE_IUSED ; declare THIS_DRIVE_IUSED READABLE_IUSED ; [[ ${DRIVE_NAME} ]] && { 
+unset THIS_DRIVE_USED READABLE_USED ; declare THIS_DRIVE_USED READABLE_USED ; [[ ${DRIVE_NAME} ]] && { 
 # Using the extra IF I can eliminate error checking using exit codes
 if ! { 
-    if THIS_DRIVE_IUSED="$(df | grep "$(basename "${DRIVE_NAME}")" | awk '{ print $3 }' | sed "s/[^0-9]*//g" )" ; 
-    then READABLE_IUSED="$( echo $(( THIS_DRIVE_IUSED * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
+    if THIS_DRIVE_USED="$(df | grep "$(basename "${DRIVE_NAME}")" | awk '{ print $3 }' | sed "s/[^0-9]*//g" )" ; 
+    then READABLE_USED="$( echo $(( THIS_DRIVE_USED * 1000  )) | numfmt --to=si --suffix="b" "$@")" ; 
     fi ; } ; 
-then echo "Error declaring or populating the variables THIS_DRIVE_IUSED or READABLE_IUSED" ;
+then echo "Error declaring or populating the variables THIS_DRIVE_USED or READABLE_USED" ;
 fi } ;
 #   Total drive space used ;
 unset  THIS_DRIVE_AVAIL READABLE_AVAIL ; declare THIS_DRIVE_AVAIL READABLE_AVAIL ; [[ ${DRIVE_NAME} ]] && { 
@@ -284,7 +252,7 @@ fi ;
 
 #   Make all the host variable readonly so nothing gets changed accidentally
 unset vars ;
-vars=( THIS_FILESYSTEMS THIS_DRIVE_TOTAL READABLE_TOTAL THIS_DRIVE_IUSED READABLE_IUSED THIS_DRIVE_AVAIL READABLE_AVAIL THIS_DRIVE_PATHS ) ;
+vars=( THIS_FILESYSTEMS THIS_DRIVE_TOTAL READABLE_TOTAL THIS_DRIVE_USED READABLE_USED THIS_DRIVE_AVAIL READABLE_AVAIL THIS_DRIVE_PATHS ) ;
 for i in "${!vars[@]}" ; do readonly "${vars[@]}" ; done ;
 unset vars ;
 
@@ -331,41 +299,33 @@ fi ;
 unset TEMP_AFS ALL_FILESYSTEMS ; declare -a TEMP_AFS ALL_FILESYSTEMS ; if [[ ${isWindowsPartition} ]] ; then  
     mapfile -t TEMP_AFS < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $1 }' ; ) ; else 
     mapfile -t TEMP_AFS < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $1 }' ; ) ;
-fi ; for i in "${!TEMP_AFS[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_FILESYSTEMS+=("${TEMP_AFS[i]}"); fi ; done 
-#   Load all the drive totals into the variable ALL_DRIVE_TOTALS then compare to see if the destination drive is large enough to handle a one to one backup. ;
-unset TEMP_ADT ALL_DRIVE_TOTALS HR_ALL_DRIVE_TOTALS ; declare TEMP_ADT ALL_DRIVE_TOTALS HR_ALL_DRIVE_TOTALS ; if [[ ${isWindowsPartition} ]] ; then  
+fi ; for i in "${!TEMP_AFS[@]}" ; do if [[ ${THIS_DRIVE_USED} -lt "${var2[i]}" ]] ; then ALL_FILESYSTEMS+=("${TEMP_AFS[i]}"); fi ; done 
+#   Load all the drive totals into the variable ALL_DRIVES_TOTALS then compare to see if the destination drive is large enough to handle a one to one backup. ;
+unset TEMP_ADT ALL_DRIVES_TOTALS HR_ALL_DRIVES_TOTALS ; declare TEMP_ADT ALL_DRIVES_TOTALS HR_ALL_DRIVES_TOTALS ; if [[ ${isWindowsPartition} ]] ; then  
     mapfile -t TEMP_ADT < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' | sed "s/[^0-9]*//g" ; ) ; else 
     mapfile -t TEMP_ADT < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $2 }' ; ) ; 
 fi ; 
-    for i in "${!TEMP_ADT[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_DRIVE_TOTALS+=("${TEMP_ADT[i]}"); fi ; done ;
-    for i in "${!ALL_DRIVE_TOTALS[@]}"; do if ! [[ "${ALL_DRIVE_TOTALS[i]}" -eq 0 ]] ; then HR_ALL_DRIVE_TOTALS+=("$( echo $(( ALL_DRIVE_TOTALS[i] * 1000  )) | numfmt --to=si --suffix="b" "$@")") ; fi ; done ;
-#   Load all the drive used space into the variable ALL_DRIVE_IUSED then compare to see if the destination drive is large enough to handle a one to one backup. ;
-unset TEMP_ADI ALL_DRIVE_IUSED HR_ALL_DRIVE_IUSED ; declare -a TEMP_ADI ALL_DRIVE_IUSED HR_ALL_DRIVE_IUSED ; if [[ ${isWindowsPartition} ]] ; then  
-    mapfile -t TEMP_ADI < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $3 }' | sed "s/[^0-9]*//g" ; ) ; else 
-    mapfile -t TEMP_ADI < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $3 }' ; ) ; fi ;
-    for i in "${!TEMP_ADI[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_DRIVE_IUSED+=("${TEMP_ADI[i]}"); fi ; done ;
-    for i in "${!ALL_DRIVE_IUSED[@]}"; do [[ ! "${ALL_DRIVE_IUSED[i]}" -eq 0 ]] && HR_ALL_DRIVE_IUSED+=("$( echo $(( ALL_DRIVE_IUSED[i] * 1000  )) | numfmt --to=si --suffix="b" "$@")") ; done ;
+    for i in "${!TEMP_ADT[@]}" ; do if [[ ${THIS_DRIVE_USED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_TOTALS+=("${TEMP_ADT[i]}"); fi ; done ;
+    for i in "${!ALL_DRIVES_TOTALS[@]}"; do if ! [[ "${ALL_DRIVES_TOTALS[i]}" -eq 0 ]] ; then HR_ALL_DRIVES_TOTALS+=("$( echo $(( ALL_DRIVES_TOTALS[i] * 1000  )) | numfmt --to=si --suffix="b" "$@")") ; fi ; done ;
+#   Load all the drive used space into the variable ALL_DRIVES_USED then compare to see if the destination drive is large enough to handle a one to one backup. ;
+unset TEMP_ADU ALL_DRIVES_USED HR_ALL_DRIVES_USED ; declare -a TEMP_ADU ALL_DRIVES_USED HR_ALL_DRIVES_USED ; if [[ ${isWindowsPartition} ]] ; then  
+    mapfile -t TEMP_ADU < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $3 }' | sed "s/[^0-9]*//g" ; ) ; else 
+    mapfile -t TEMP_ADU < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $3 }' ; ) ; fi ;
+    for i in "${!TEMP_ADU[@]}" ; do if [[ ${THIS_DRIVE_USED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_USED+=("${TEMP_ADU[i]}"); fi ; done ;
+    for i in "${!ALL_DRIVES_USED[@]}"; do [[ ! "${ALL_DRIVES_USED[i]}" -eq 0 ]] && HR_ALL_DRIVES_USED+=("$( echo $(( ALL_DRIVES_USED[i] * 1000  )) | numfmt --to=si --suffix="b" "$@")") ; done ;
 #   Load all the drive used space into the variable ALL_DRIVES_AVAIL then compare to see if the destination drive is large enough to handle a one to one backup. ;
 unset TEMP_ADA ALL_DRIVES_AVAIL HR_ALL_DRIVES_AVAIL ; declare -a TEMP_ADA ALL_DRIVES_AVAIL HR_ALL_DRIVES_AVAIL ; if [[ ${isWindowsPartition} ]] ; 
     then mapfile -t TEMP_ADA < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $4 }' | sed "s/[^0-9]*//g" ; ) ;
     else mapfile -t TEMP_ADA < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $4 }' ; ) ; fi ;
-    for i in "${!TEMP_ADA[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_AVAIL+=("${TEMP_ADA[i]}"); fi ; done ;
+    for i in "${!TEMP_ADA[@]}" ; do if [[ ${THIS_DRIVE_USED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_AVAIL+=("${TEMP_ADA[i]}"); fi ; done ;
     for i in "${!ALL_DRIVES_AVAIL[@]}"; do [[ ! "${ALL_DRIVES_AVAIL[i]}" -eq 0 ]] && HR_ALL_DRIVES_AVAIL+=("$( echo $(( ALL_DRIVES_AVAIL[i] * 1000  )) | numfmt --to=si --suffix="b" "$@")") ; done ;
-###################################################################################################################################################
-#   Kept for inclusivity 
-###################################################################################################################################################
-#   Load all the drive used percentage into the variable ALL_DRIVE_PCENT then compare to see if the destination drive is large enough to handle a one to one backup. 
-#unset TEMP_PCT ALL_DRIVE_PCENT ; declare -a TEMP_PCT ALL_DRIVE_PCENT ; if [[ ${isWindowsPartition} ]] ; 
-#    then mapfile -t TEMP_PCT < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $5 }' ; ) ;
-#    else mapfile -t TEMP_PCT < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $5 }' ; ) ; fi 
-#    for i in "${!TEMP_PCT[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_DRIVE_PCENT+=("${TEMP_PCT[i]}"); fi ; done ;
-###################################################################################################################################################
 #   Load all the drive paths into the variable ALL_DRIVES_PATHS then compare to see if the destination drive is large enough to handle a one to one backup. ;
 unset TEMP_ADP ALL_DRIVES_PATHS ALL_DRIVES_PATHNAMES ; declare -a TEMP_ADP ALL_DRIVES_PATHS ALL_DRIVES_PATHNAMES ; if [[ ${isWindowsPartition} ]] ; 
     then mapfile -t TEMP_ADP < <( df | grep -v "${WIN_PARTITION}" | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $6 }' ; ) ;
     else mapfile -t TEMP_ADP < <( df | grep -v "${THIS_DRIVE_PATHS}" | grep 'media' | sort -k1 | awk '{ print $6 }' ; ) ; fi ;
-    for i in "${!TEMP_ADP[@]}" ; do if [[ ${THIS_DRIVE_IUSED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_PATHS+=("${TEMP_ADP[i]}"); fi ; done ;
+    for i in "${!TEMP_ADP[@]}" ; do if [[ ${THIS_DRIVE_USED} -lt "${var2[i]}" ]] ; then ALL_DRIVES_PATHS+=("${TEMP_ADP[i]}"); fi ; done ;
 
+#   Shorten the basename of drives to fit in the area provided for the menu. After 12 characters it cuts off the rest and truncates with ...
 mapfile -t ALL_DRIVES_PATHNAMES < <(  for i in "${!ALL_DRIVES_PATHS[@]}" ; do basename "${ALL_DRIVES_PATHS[i]}" | sed 's/\(.\{12\}\).*/\1.../' ; done ) ;
 
 #   ----------------------------------------------------------- END drive ARRAY VALUES ------------------------------------------------------------ 
@@ -375,18 +335,13 @@ mapfile -t ALL_DRIVES_PATHNAMES < <(  for i in "${!ALL_DRIVES_PATHS[@]}" ; do ba
 #   Count the number of files found
 declare -i COUNT_FILES;        
 COUNT_FILES="${#ALL_FILESYSTEMS[@]}"  ;
-#   Count all the entries for each column
-AFS_COUNT=${#ALL_FILESYSTEMS} ;
-#ADT_COUNT=${#ALL_DRIVE_TOTALS} ;
-#ADI_COUNT=${#ALL_DRIVE_IUSED} ;
-#ADA_COUNT=${#ALL_DRIVES_AVAIL} ;
-#PCT_COUNT=${#ALL_DRIVE_PCENT} ;
-#ADP_COUNT=${#ALL_DRIVES_PATHNAMES} ;
 
-if eval VERIFY_FUNCTION UNDERLINE ; then  
-UNDER_FST=$(UNDERLINE "${AFS_COUNT}" ) ;
+if VERIFY_FUNCTION UNDERLINE ; then 
+#   Use the number of characters in the filesystem column for a count. It is the one that varies the most.
+UNDER_FST=$(UNDERLINE "${#ALL_FILESYSTEMS}" ) ;
+#   Total only needs to be under 6 characters
 UNDER_ADT=$(UNDERLINE 6  ) ; # "${ADT_COUNT}" ) ; 
-UNDER_ADI=$(UNDERLINE 6  ) ; # "${ADI_COUNT}" ) ; 
+UNDER_ADU=$(UNDERLINE 6  ) ; # "${ADI_COUNT}" ) ; 
 UNDER_ADA=$(UNDERLINE 6  ) ; # "${ADA_COUNT}" ) ; 
 UNDER_ADP=$(UNDERLINE 15 ) ; # "${ADP_COUNT}" ) ; 
 # UNDER_PCT=$(UNDERLINE "${PCT_COUNT}") ;
@@ -397,20 +352,20 @@ unset NUM_SEQUENCE ; for i in $(seq 1 ${COUNT_FILES}); do if [[ $i -ne ${COUNT_F
 #   Gather up all the available media drive data to place on the menu 
 declare -a AVAIL_DRIVES ; mapfile -t AVAIL_DRIVES < <(  
     for eachUsableDrive in "${!ALL_FILESYSTEMS[@]}"; do 
-        printf "%-${#UNDER_ADP}s\t%-${#UNDER_FST}s\t%-${#UNDER_ADT}s\t%-${#UNDER_ADI}s\t%-${#UNDER_ADA}s\n" \
-        "${ALL_DRIVES_PATHNAMES[eachUsableDrive]}" "${ALL_FILESYSTEMS[eachUsableDrive]}" "${HR_ALL_DRIVE_TOTALS[eachUsableDrive]}" "${HR_ALL_DRIVE_IUSED[eachUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[eachUsableDrive]}" ; done ) ;
+        printf "%-${#UNDER_ADP}s\t%-${#UNDER_FST}s\t%-${#UNDER_ADT}s\t%-${#UNDER_ADU}s\t%-${#UNDER_ADA}s\n" \
+        "${ALL_DRIVES_PATHNAMES[eachUsableDrive]}" "${ALL_FILESYSTEMS[eachUsableDrive]}" "${HR_ALL_DRIVES_TOTALS[eachUsableDrive]}" "${HR_ALL_DRIVES_USED[eachUsableDrive]}" "${HR_ALL_DRIVES_AVAIL[eachUsableDrive]}" ; done ) ;
 
 #   Put everything together and run the program ;
 while true ; do 
 #   Start loop to configure, print out menu and run rsync program 
 tput bel
-    clear ;
+    #clear ;
     echo -e "\a\n\n\r" ;
     #   List information for the host drive selected
-    echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_IUSED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
+    echo -e "  \tCurrent Drive: $(basename "${DRIVE_NAME}") \e[2;37m(${THIS_FILESYSTEMS})\e[0m   Total: \e[2;37m${READABLE_TOTAL}\e[0m - Used: \e[2;37m${READABLE_USED}\e[0m - Avail: \e[2:37m${READABLE_AVAIL}\e[0m\r\n" ;
 
     #   Print the heading with titles and underline each column heading ;
-    printf "\t\e[2;4;22m%-${#UNDER_ADP}s\e[0m\t\e[4;22m%-${#UNDER_FST}s\e[0m\t\e[4;22m%-${#UNDER_ADT}s\e[0m\t\e[4;22m%-${#UNDER_ADI}s\e[0m\t\e[4;22m%-${#UNDER_ADA}s\e[0m\n" "Drive name" "Location" "Total " "Used " "Available " ;
+    printf "\t\e[2;4;22m%-${#UNDER_ADP}s\e[0m\t\e[4;22m%-${#UNDER_FST}s\e[0m\t\e[4;22m%-${#UNDER_ADT}s\e[0m\t\e[4;22m%-${#UNDER_ADU}s\e[0m\t\e[4;22m%-${#UNDER_ADA}s\e[0m\n" "Drive name" "Location" "Total " "Used " "Available " ;
     #   Combine data gathered of available drives and list them in this format (size is listed in Mb, Gb, Tb...):
     #   1)  <DriveName>            	/dev/sd??    	<total>     	<used>     	<avail>
     for i in $(seq 1 "${#AVAIL_DRIVES[@]}"); do 
@@ -429,14 +384,30 @@ tput bel
     echo -en "\t  'A' will cause all numbers entered to be ignored. \n" ;
     echo -en "\t  The script will run each process in the sequence you provide.\n\r\n" ;
     echo -en "\tSelect: ${NUM_SEQUENCE}, A, S, D, or F: " ;
-    unset OPT OPT_TMP OPT_ARRAY ;
+    unset OPT_TMP OPT_ARRAY ;
+    declare -u OPT_TMP OPT_ARRAY ;
     #   Pause and wait for user selection entry....
     IFS= read -r OPT_TMP &>/dev/null 2>&1 ; 
+    INPUT0="$( echo "${OPT_TMP//" "/}" | tr "[:lower:]" "[:upper:]" | awk -v RS='[A-Z]|[0-9]' '{str=(++a[RT]==1?str RT: str)}END{print str}' )"
     #   After menu selection entry is done, run a function to filter out possible spaces and duplicate entries before
     #   checking for an 'A' entry which would override any number selection entered.
     #   This will take all those entries and convert them into an array that can be used by the case statement for each selection
-    mapfile -t OPT_ARRAY < <( CHK_A_OPT "${OPT_TMP}" ) ;
-
+    #   If only one character found then bypass all the filtering.
+    if [[ ${#OPT_TMP} != "1" ]] ; then 
+        CNTRL_CHAR='A' ;
+        #   Filter: Remove extra spaces, force uppercase if not already done and remove any duplicate or non alphanumeric characters
+        #  Check for the control character "A", which would override any number entered and ...
+        CHKINPUT0="$( echo "${INPUT0}" | grep -c "${CNTRL_CHAR}" )" ; 
+        #   ... remove all digits from the string
+        if [[ "${CHKINPUT0}" -gt 0 ]] ; then INPUT1="${INPUT0//[:digit:]/}" ; fi ;
+        #   If there was no characters removed, copy over everything to the new variable
+        if [[ -n $INPUT1 ]] ; then INPUT0="${INPUT1}" ; fi ; 
+        #   Count the remaining characters in the string after filtering
+        COUNT_INPUT=$(( "${#INPUT0}" - 1 )) ; 
+        if [[ $COUNT_INPUT -eq 0 ]] ; then echo "${INPUT0}" ; return 0 ; fi ;
+        mapfile -t OPT_ARRAY < <( for (( i=0 ; i<=COUNT_INPUT ; i++ )) ; do echo "${INPUT0:$i:1}" ; done ; ) ;
+    else OPT_ARRAY=( "$( echo "$OPT_TMP" | tr "[:lower:]" "[:upper:]" )" ) ;
+    fi ;
     #   Start loop to process each menu selection option
     for eachDrive in "${!OPT_ARRAY[@]}" ; do  
     #   Process through each selection and 
@@ -456,7 +427,7 @@ tput bel
             ;;  #   end case selection ;
             
             #----------------------- ;
-            "A"|"a" ) 
+            "A" ) 
                 for a in "${!ALL_DRIVES_PATHS[@]}" ; do  
                     zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[a]}" ; 
                     #   Place a title on the terminal top ;
@@ -472,7 +443,7 @@ tput bel
         
             #----------------------- ;
         
-            "S"|"s" ) 
+            "S" ) 
                 unset SINGLE_ALL_HOST ;
                 SINGLE_ALL_HOST=$(zenity --file-selection --title="Select a directory for syncing" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null;
                 if [[ $(( COUNT_FILES + 1 )) -gt 1 ]] ; 
@@ -489,14 +460,14 @@ tput bel
                     until [[ "$yn" = "n" ]] || [[ "$yn" = "N" ]] || [[ "$yn" = "y" ]] || [[ "$yn" = "Y" ]] ; do  
                         echo -en " \tOnly one drive detected.\n\r\tDo you wish to copy this folder to ${ALL_DRIVES_PATHS[0]}. Y/N? "; 
                         read -r yn ; 
-                        case $yn in 
-                            "Y"|"y" ) echo -e " \r\nThank you. Continuing..." ; 
+                        case $(${yn} | tr "[:lower:]" "[:upper:]" ) in 
+                            "Y" ) echo -e " \r\nThank you. Continuing..." ; 
                                 zenity --notification --text " \t Attempting to run rsync.\r\n Attempting to run rsync from ${SINGLE_ALL_HOST} to ${ALL_DRIVES_PATHS[0]}" ; 
                                 #  Start the rsync program ;
                                 RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${ALL_DRIVES_PATHS[0]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
                                 zenity --notification --text "rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[0]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" 
                             ;; #   end case selection ;
-                            "N"|"n" ) echo OK. Exiting... ; pause ; exit 
+                            "N" ) echo OK. Exiting... ; pause ; exit 
                             ;; #   end case selection ;
                             *) echo "Selection invalid! Try again." ; pause 
                             ;; #   end case
@@ -506,19 +477,22 @@ tput bel
                 fi  ;
            ;; #   end case selection ;
             #----------------------- ;
-            "D"|"d" ) 
+            "D" ) 
                 unset SINGLE_DIR_HOST ;
                 SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[d]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null ;
                 for d in "${!ALL_DRIVES_PATHS}"; do  
                     zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/" ; 
                     echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/\007" ;
+                    #  Start the little dancing cursor ;
                     RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${ALL_DRIVES_PATHS[d]}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
+
+                    #if ! TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${SINGLE_ALL_HOST}/" "${ALL_DRIVES_PATHS[i]}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ;
                     zenity --notification --text "rsync from ${SINGLE_DIR_HOST} to ${ALL_DRIVES_PATHS[d]} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
                     echo -e "$(date +%m-%d-%Y_%H%M) --> rsync to ${ALL_DRIVES_PATHS[d]} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null ;
                 done  ;
             ;; #   end case selection ;
             #----------------------- ;
-            "F"|"f" ) 
+            "F" ) 
                 unset SINGLE_HOST ;
                 count=1 ; fod="" ; while [[ -z "${NEW_MOUNT_PATH}" ]] ; do 
                 printf '\n\n\r\t%s' "Do you wish to select a (D))irectory or (F)ile to sync [D/F]? " ; 
@@ -546,18 +520,24 @@ tput bel
                     *) if [[ ${count} -eq 1 ]] ; then echo -n "Again... " ; count=$(( count + 1 )) ;  else echo -n "Once again... Try number #${count}. " ; fi ; count=$(( count + 1 )) ;
                 esac ; 
                 done ; zenity --notification --text "Attempting to run rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/" ; 
-                echo -ne " \033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ;
-                RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${NEW_MOUNT_PATH}" ; EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; 
+            
+                echo -ne " \033]0;syncing from ${SINGLE_HOST} to ${NEW_MOUNT_PATH}/\007" ; RUN_RSYNC_PROG "${SINGLE_HOST}" "${NEW_MOUNT_PATH}" ;
+                #  Start the little dancing cursor ;
+                RUN_RSYNC_PROG "${SINGLE_ALL_HOST}" "${NEW_MOUNT_PATH}" ;
+                #if ! TAB_OVER rsync "${RSYNC_FLAGS[@]}" -- "${SINGLE_ALL_HOST}/" "${NEW_MOUNT_PATH}" 2>&1 ; then EXIT_CODE=$? ; REASON="$(TRANSLATE_ERRORCODE "${EXIT_CODE}")" ; fi ;
                 zenity --notification --text "rsync from ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status:\nCode: ${EXIT_CODE} - ${REASON}" ;                        
                 echo -e "$(date +%m-%d-%Y_%H%M) --> rsync ${SINGLE_HOST} to ${NEW_MOUNT_PATH} exit status: Code: ${EXIT_CODE} - ${REASON}" |& tee -a "${RSYNC_LOG}" &>/dev/null  ;
             ;; #   end case selection ;
-            "Q"|"q" ) exit ;; #   end case selection ;
+            "Q" ) exit ;; #   end case selection ;
             #----------------------- ;
             * ) printf '%s' "Selection invalid! Try again, " ; printf '\t%s\n' "$(read -srn1 -p 'Press any key to continue...')" ;
         #   end case
         esac ;
     #   End loop to process each menu option
     done ;
+
+#   Try twice to kill the process
+#if ! ps --pid="${awake_pid}" > /dev/null ; then if ! kill -9 "${awake_pid}" ; then echo "kill process did not complete." ; fi ; fi ;
 
 #   End loop to configure, print out selection menu and run rsync program 
 done
