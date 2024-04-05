@@ -1,4 +1,18 @@
 #! /usr/bin/bash
+# Prompt will stop the current process indefinitely until 
+# any key is pressed or timer reaches 00.
+
+# Without options, simply: 
+# $ Press any key to continue...
+# $
+
+# With options:
+# $ command -t 10 -p "Process 1 finished"  -r "[ Continuing with process 2 ]"
+# or, 
+# $ command --timer 10 --prompt "Process 1 finished" --response "[ Continuing with process 2 ]"
+# $ [10] Process 1 finished
+# $ [ Continuing with process 2 ]
+# $
 declare DEFAULT_PROMPT
 declare -i TIMER
 
