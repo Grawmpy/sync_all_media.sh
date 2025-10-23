@@ -70,9 +70,9 @@ fi
 #   Get the logged in user's username 
 if [[ $( whoami ) = "root" ]] 
     then 
-        PRIME_SUDOER=${SUDO_USER} 
+        LOGGED_USER=${SUDO_USER} 
     else 
-        PRIME_SUDOER=$( whoami ) 
+        LOGGED_USER=$( whoami ) 
 fi
 
 ###################################################################################################################################################
@@ -85,7 +85,7 @@ fi
 
 ###################################################################################################################################################
 #   Set the pathway to the /media directory 
-MEDIA_PATH="/media/${PRIME_SUDOER}" 
+MEDIA_PATH="/media/${LOGGED_USER}" 
 
 ###################################################################################################################################################
 #   Increase the terminal window size to 110x40 
@@ -93,11 +93,11 @@ printf '\033[8;40;110t'
 
 ###################################################################################################################################################
 #   DEFINE THE LOG FILE FOR RSYNC TO USE TO  
-if [[ ! -d "/home/${PRIME_SUDOER}/rsync_logs" ]] 
+if [[ ! -d "/home/${LOGGED_USER}/rsync_logs" ]] 
     then 
-        mkdir "/home/${PRIME_SUDOER}/rsync_logs" 
+        mkdir "/home/${LOGGED_USER}/rsync_logs" 
     else 
-        RSYNC_LOG="$(touch "/home/${PRIME_SUDOER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log")" 
+        RSYNC_LOG="$(touch "/home/${LOGGED_USER}/rsync_logs/rsync_$(date +%m-%d-%Y_%H%M).log")" 
 fi 
 
 ###################################################################################################################################################
@@ -227,9 +227,7 @@ RUN_RSYNC_PROG() {
 
     dots=5 
     
-    rsync -ahlmqr --numeric-ids --progress --fsync --mkpath --log-file="${RSYNC_LOG}" "${RSYNC_EXCLUDES[@]}" --log-file-format="%t: %o %f %b" -- "${host}/" "${dest}" &
-    
-    my_pid=$! 
+    rsync -ahlmqr --numeric-ids --progress --fsync --mkpath --log-file="${RSYNC_LOG}" "${RSYNC_EXCLUDES[@]}" --log-file-format="%t: %o %f %b" -- "${host}/" "${dest}" & my_pid=$! 
     
     clear 
     
@@ -289,6 +287,7 @@ CHK_A_OPT(){
         #   Count the number of characters left after filtering 
         #   If there is only one character left, no need to loop, echo the character and return success 
         if [[ "${#input1}" -eq 1 ]] ; then echo "${input1}" ; return 0 ; fi 
+    # if $input1 is populated count the number of characters and echo output into an arrray for future processing
     if [[ -n ${input1} ]] ; then count=$(( "${#input1}" -1 )) 
         for each in $( seq 0 ${count} ) ; do output0+=("${input1:${each}:1}") ; done 
         else count=$(( "${#input1}" -1 )) ; for each in $( seq 0 ${count} ) ; do output0+=("${input0:${each}:1}") ; done 
@@ -548,7 +547,7 @@ while true ; do
                 
             "S"|"s" ) 
                 unset SINGLE_ALL_HOST 
-                SINGLE_ALL_HOST=$(zenity --file-selection --title="Select a directory for syncing" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null;
+                SINGLE_ALL_HOST=$(zenity --file-selection --title="Select a directory for syncing" --directory --filename="${MEDIA_PATH}/${LOGGED_USER}") &> /dev/null;
                 if [[ $(( COUNT_FILES + 1 )) -gt 1 ]] 
                 then 
                     printf " \t%s" "Select one drive, 1-${COUNT_FILES}, from the drive choices above:" 
@@ -583,7 +582,7 @@ while true ; do
 
             "D"|"d" ) 
                 unset SINGLE_DIR_HOST 
-                SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[d]}" --directory --filename="${MEDIA_PATH}/${PRIME_SUDOER}") &> /dev/null 
+                SINGLE_DIR_HOST=$(zenity --file-selection --title="Select a directory for syncing to ${ALL_DRIVES_PATHS[d]}" --directory --filename="${MEDIA_PATH}/${LOGGED_USER}") &> /dev/null 
                 for d in "${!ALL_DRIVES_PATHS}"; do  
                     zenity --notification --text "Attempting to run rsync from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/" 
                     echo -ne " \033]0;syncing from ${DRIVE_NAME} to ${ALL_DRIVES_PATHS[d]}/\007" 
@@ -606,22 +605,22 @@ while true ; do
                     "D|d" ) 
                         while [[ -z "${SINGLE_HOST}" ]] ; do  
                             printf '\n\n\r\t%s' "Select Directory: " 
-                            SINGLE_HOST=$(zenity --file-selection --title="Select a directory for syncing" --directory --filename="/home/${PRIME_SUDOER}/") &> /dev/null 
+                            SINGLE_HOST=$(zenity --file-selection --title="Select a directory for syncing" --directory --filename="/home/${LOGGED_USER}/") &> /dev/null 
                         done 
                         while [[ -z "${NEW_MOUNT_PATH}" ]] ; do  
                             printf '\n\n\r\t%s' "Select Directory: " 
-                            NEW_MOUNT_PATH="$(zenity --file-selection --filename="/home/${PRIME_SUDOER}/" --directory --title="Select any directory on your computer for syncing to")" 
+                            NEW_MOUNT_PATH="$(zenity --file-selection --filename="/home/${LOGGED_USER}/" --directory --title="Select any directory on your computer for syncing to")" 
                         done  
                     ;; #   end case selection 
 
                     "F"|"f" ) 
                         while [[ -z "${SINGLE_HOST}" ]] ; do  
                             printf '\n\n\r\t%s\n' "Select File: " 
-                            SINGLE_HOST=$(zenity --file-selection --title="Select a single file for syncing" --filename="/home/${PRIME_SUDOER}/") &> /dev/null 
+                            SINGLE_HOST=$(zenity --file-selection --title="Select a single file for syncing" --filename="/home/${LOGGED_USER}/") &> /dev/null 
                         done 
                         while [[ -z "${NEW_MOUNT_PATH}" ]] ; do  
                             printf '\n\n\r\t%s\n' "Select Directory: " 
-                            NEW_MOUNT_PATH="$(zenity --file-selection --filename="/home/${PRIME_SUDOER}/" --directory --title="Select any directory on your computer for syncing to")" 
+                            NEW_MOUNT_PATH="$(zenity --file-selection --filename="/home/${LOGGED_USER}/" --directory --title="Select any directory on your computer for syncing to")" 
                         done  
                     ;; #   end case selection 
 
