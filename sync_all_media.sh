@@ -1,39 +1,40 @@
 #!/usr/bin/bash 
-# shellcheck enable=require-variable-braces
+
 ###################################################################################################################################################
 #
-#    Sync files and directories from a selected media source to all or a select single media destination.       
 #                                                                                                 
 #    Creation : 30 April 2023                                                                      
 #    Modify Date : 17 March 2024    
-#    Production version : 4.3.1a                                                    
-#                                                                                                                       
-#    After host drive selection the script looks at the other attached peripherals to see if any drives 
-#    are large enough to contain the entire backup in a one-to-one backup only.             
-#                                                                                                 
-###################################################################################################################################################
+#    Version : 4.3.1a     
+#    Author: Grampy
+#    Description: Synchronize files and directories from a single media source to a single media drive destination, all media drives, or 
+#    single file or directory to a select directory destination. 
+#    The script looks at all attached drives and looks at the total amount of space on the drives to make sure that the drive is large enough to accept 
+#    the entire backup of the selected drive. If the space is not large enough the drive will not display that drive as an option.
 # 
-# MIT License 
+#    MIT License 
 #
-# Copyright (c) 2024 Grawmpy 
+#    Copyright (c) 2024 Grawmpy 
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the "Software"), to deal 
-# in the Software without restriction, including without limitation the rights 
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
-# copies of the Software, and to permit persons to whom the Software is 
-# furnished to do so, subject to the following conditions: 
+#    Permission is hereby granted, free of charge, to any person obtaining a copy 
+#    of this software and associated documentation files (the "Software"), to deal 
+#    in the Software without restriction, including without limitation the rights 
+#    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
+#    copies of the Software, and to permit persons to whom the Software is 
+#    furnished to do so, subject to the following conditions: 
 #
-# The above copyright notice and this permission notice shall be included in all 
-# copies or substantial portions of the Software. 
+#    The above copyright notice and this permission notice shall be included in all 
+#    copies or substantial portions of the Software. 
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
-# SOFTWARE. 
+#    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+#    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+#    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+#    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+#    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+#    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+#    SOFTWARE. 
+#
+#
 ###################################################################################################################################################
 
 #---- for debug ----- 
@@ -121,7 +122,7 @@ done
 drive_path="${MEDIA_PATH}/${host_name}" 
 
 if ! cd "${host_drive_sel}" 
-    then echo -ne "Changing directory to ${drive_path} failed. Attempting another try." 
+    then echo -ne "Changing directory to ${drive_path} failed. " ; X_CODE 99 ; pause ; exit
 fi 
 
 check="$(basename "${PWD}")" 
@@ -185,15 +186,19 @@ UNDERLINE(){
  } 
 
 ###################################################################################################################################################
-#   Run rsync from the gathered data and use a Waiting animation while running
+#   Run rsync from the gathered data and use a "Waiting....." animation while running
 RUN_RSYNC_PROG() { 
     unset RSYNC_EXCLUDES host host find_drive tfs tdp rt ru ra 
     declare RSYNC_EXCLUDES host host find_drive tfs tdp rt ru ra  
-    RSYNC_EXCLUDES=( '--exclude=\".Trash-1000\"' '--exclude=\"lost+found\"' '--exclude=\"timeshift\"' '--exclude=\"System Volume Information\"' '--exclude=\"\$RECYCLE.BIN\"' )
-
     host="${1:-}" 
     dest="${2:-}" 
-
+# EXCLUDE WINDOWS VOLUME INFO, RECYCLEBIN, LINUX TRASH, TIMESHIFT BACKUP, AND LINUX LOST+FOUND. IF YOU WANT TO ADD ANY THESE COMMENT THE LINE OUT
+    RSYNC_EXCLUDES+=( '--exclude=\".Trash-1000\"' )
+    RSYNC_EXCLUDES+=( '--exclude=\"lost+found\"' )
+    RSYNC_EXCLUDES+=( '--exclude=\"timeshift\"' )
+    RSYNC_EXCLUDES+=( '--exclude=\"System Volume Information\"' )
+    RSYNC_EXCLUDES+=( '--exclude=\"\$RECYCLE.BIN\"' )
+ 
     find_drive="$(df | grep "$(basename "${dest}")")"
 
     if ! tdp="$(echo "${find_drive}" | awk '{ print $6 }')" ; then LOG_ECHO "Error declaring or populating the variable 'tdp'" ; fi 
