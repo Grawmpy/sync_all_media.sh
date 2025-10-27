@@ -77,7 +77,7 @@ if [[ $( whoami ) = "root" ]]
 fi
 
 ###################################################################################################################################################
-#   Create a pause function that works similar to the windows version 
+#   Create a simple line pause function that works similar to the windows version 
 if ! which pause &>/dev/null ; then
 pause()( 
     printf '%s\n'  "$(read -rsn1 -p 'Press any key to continue...')" 
@@ -122,7 +122,7 @@ done
 drive_path="${MEDIA_PATH}/${host_name}" 
 
 if ! cd "${host_drive_sel}" 
-    then echo -ne "Changing directory to ${drive_path} failed. " ; X_CODE 99 ; pause ; exit
+    then echo -ne "Changing directory to ${drive_path} failed. " ; TRANSLATE_ERRORCODE 3 ; pause ; exit
 fi 
 
 check="$(basename "${PWD}")" 
@@ -351,8 +351,9 @@ fi
 
 
 UNMOUNT_WIN() { 
+DO_UNMOUNT=0 ;
 ########################################
-# For dual boot users allow Windows drive 
+# For dual boot users allow Windows drive if you want the option of backing up Windows drive
 declare FIND_WIN_OS FIND_WIN_REC WIN_OS_DRIVE RECOV_PARTITION DRIVE_OS_COMPARE ;
 unset FIND_WIN_OS FIND_WIN_REC WIN_OS_DRIVE RECOV_PARTITION DRIVE_OS_COMPARE ;
 declare -a ALL_DRIVES_PATHNAMES=() 
@@ -361,26 +362,19 @@ declare -a ALL_DRIVES_PATHNAMES=()
 # In that case the variable will come up blank. With evarything involved in doing this, this scenario is almost non-existent.
 # "Microsoft reserved" is the readable name for the 'msftres' flag always placed right before the Windows OS drive at installation. 
 # "Microsoft basic data" is the readable name for the 'msftdata' flag used for all ntfs formatted drives
-FIND_WIN_REC=$(sudo fdisk -l | grep "Microsoft basic data" | awk '{print $1}') ; # Find the reserved drive flag. This is always with the OS on the same drive.
+FIND_WIN_REC=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ; # Find the reserved drive flag. This is always with the OS on the same drive.
 # remove ("/dev/"); echoing the next 3 characters (sd?, nvm, dis...) 
 # this action Narrows down search and eliminates backup drives formatted as ntfs
 WIN_OS_DRIVE="${FIND_WIN_REC:5:3}" 
 FIND_WIN_OS="$(sudo fdisk -l | grep "${WIN_OS_DRIVE}" | grep "Microsoft basic data" | grep -v "/media" | awk '{print $1}') &>/dev/null ; )"
-
-if RECOV_PARTITION=$(sudo fdisk -l | grep "Microsoft reserved" | awk '{print $1}') ; then
-#   Moves right past first five charcters from the output ("/dev/") echoing only the next 3 characters (sd?, nvm, dis...) 
-    DRIVE_OS_COMPARE="${RECOV_PARTITION:5:3}" 
-    if eval sudo fdisk -l | grep "${DRIVE_OS_COMPARE}" | grep "Microsoft basic data" | awk '{print $1}' &>/dev/null 
-        then  
-        #   Using the infomation from above leads us to the ntfs partition of the drive containing the Windows OS. 
-        FIND_WIN_OS="$(sudo fdisk -l | grep "${DRIVE_OS_COMPARE}" | grep "Microsoft basic data" | grep -v '/media' | awk '{print $1}')" &>/dev/null 
-            if findmnt "${FIND_WIN_OS}" &>/dev/null 2>&1
-                then
-                    sudo umount -f "${FIND_WIN_OS}"  &>/dev/null 2>&1
-            fi
-    fi 
+if [[ ${DO_UNMOUNT} -eq 0 ]]  
+    then
+        findmnt "${FIND_WIN_OS}" &>/dev/null 2>&1
+        sudo umount -f "${FIND_WIN_OS}"  &>/dev/null 2>&1
 fi
 }
+
+clear
 
 declare THIS_FILESYSTEMS READABLE_TOTAL READABLE_IUSED READABLE_AVAIL THIS_DRIVE_PATHS
 ### Filesystem information for selected host drive
@@ -495,8 +489,8 @@ while true ; do
         printf '\t\e[1;97m%s\e[0m'; echo -en "\e[1;32m"; echo -ne "${i}" ; echo -ne "\e[0m)" ; printf ' %s\n' "${AVAIL_DRIVES[$((i-1))]}"
     done 
 
-    echo -en '\n\a' ; # Inset a space and toggle bell for notification
-
+    echo -en '\n' ; # Inset a space
+    
     # List options available other than entering the number from drive listing
     if [[ ${AVAIL_DRIVES[0]} != "No available drive found to accept backup" ]] ; then echo -en "\t\e[1;32m" ; echo -en "A" ; echo -ne "\e[0m)  Backup to \e[1;97m\e[4;37mA\e[0mll drives above.\r\n" ; fi
     if [[ ${AVAIL_DRIVES[0]} != "No available drive found to accept backup" ]] ; then echo -en "\t\e[1;32m" ; echo -en "S" ; echo -ne "\e[0m)  Select Directory to back up to a \e[1;97m\e[4;37mS\e[0mingle drive\r\n" ; fi
